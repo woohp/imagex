@@ -43,7 +43,7 @@ tuple<blob, int, int, int> jpeg_decompress(const blob& jpeg_bytes)
     /* clean up */
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
-    return tuple(move(output), cinfo.output_width, cinfo.output_height, cinfo.num_components);
+    return make_tuple(move(output), cinfo.output_width, cinfo.output_height, cinfo.num_components);
 }
 
 
