@@ -8,7 +8,11 @@ defmodule Imagex do
   app = Mix.Project.config[:app]
 
   def init do
-    path = :filename.join(:code.priv_dir(unquote(app)), 'imagex')
+    base_path = case :code.priv_dir(unquote(app)) do
+      {:error, :bad_name} -> "priv"
+      dir -> dir
+    end
+    path = :filename.join(base_path, 'imagex')
     :ok = :erlang.load_nif(path, 0)
   end
 
