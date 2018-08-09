@@ -1,5 +1,4 @@
 #include <tuple>
-#include <variant>
 #include <stdio.h>
 #include <jpeglib.h>
 #include <erl_nif.h>

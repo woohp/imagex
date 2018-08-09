@@ -4,7 +4,10 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#if __cplusplus >= 201700
 #include <variant>
+#define HAS_VARIANT
+#endif
 #include <erl_nif.h>
 #include "atom.hpp"
 
@@ -256,6 +259,7 @@ public:
 };
 
 
+#ifdef HAS_VARIANT
 template<typename ...Args>
 struct type_cast<std::variant<Args...>>
 {
@@ -275,3 +279,4 @@ public:
         }, item);
     }
 };
+#endif
