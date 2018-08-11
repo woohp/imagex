@@ -24,6 +24,10 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
+  def decode(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
   def rgb2gray(_pixels) do
     exit(:nif_library_not_loaded)
   end

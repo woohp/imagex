@@ -30,6 +30,18 @@ defmodule ImagexTest do
     assert String.starts_with?(error_reason, "invalid png header")
   end
 
+  test "generic decode" do
+    {:ok, jpeg_bytes} = File.read("test/lena.jpg")
+    {_pixels, width, height, channels} = Imagex.decode(jpeg_bytes)
+    assert {width, height, channels} == {512, 512, 3}
+
+    {:ok, png_bytes} = File.read("test/lena.png")
+    {_pixels, width, height, channels} = Imagex.decode(png_bytes)
+    assert {width, height, channels} == {512, 512, 3}
+
+    assert Imagex.decode(<< 0, 1, 2 >>) == {:error, "failed to decode"}
+  end
+
   test "convert rgb to grayscale" do
     rgb_pixels = << 255, 0, 0, 0, 255, 0, 0, 0, 255 >>
     grayscale_pixels = Imagex.rgb2gray(rgb_pixels)

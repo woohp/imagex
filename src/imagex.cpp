@@ -130,6 +130,27 @@ tuple<blob, int, int, int> png_decompress(const blob& png_bytes)
 }
 
 
+tuple<blob, int, int, int> decode(const blob& bytes)
+{
+    try
+    {
+        return jpeg_decompress(bytes);
+    }
+    catch (const erl_error<string>&)
+    {}
+
+    try
+    {
+        return png_decompress(bytes);
+    }
+    catch (const erl_error<string>&)
+    {}
+
+    throw erl_error<string>("failed to decode");
+}
+
+
+
 blob rgb2gray(const blob& bytes)
 {
     blob output(bytes.size() / 3);
@@ -154,5 +175,6 @@ blob rgb2gray(const blob& bytes)
 ELIXIR_MODULE(Imagex,
     def(jpeg_decompress, "jpeg_decompress"),
     def(png_decompress, "png_decompress"),
+    def(decode, "decode"),
     def(rgb2gray, "rgb2gray"),
 )
