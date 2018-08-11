@@ -9,7 +9,7 @@ defmodule Imagex do
 
   def init do
     base_path = case :code.priv_dir(unquote(app)) do
-      {:error, :bad_name} -> "priv"
+      {:error, :bad_name} -> 'priv'
       dir -> dir
     end
     path = :filename.join(base_path, 'imagex')
@@ -17,6 +17,10 @@ defmodule Imagex do
   end
 
   def jpeg_decompress(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
+  def png_decompress(_bytes) do
     exit(:nif_library_not_loaded)
   end
 

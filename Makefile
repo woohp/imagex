@@ -20,7 +20,7 @@ imagex:
 	$(MIX) compile
 
 priv/imagex.so: src/imagex.cpp
-	$(CXX) $(CFLAGS) -shared $(LDFLAGS) -o $@ src/imagex.cpp -ljpeg
+	$(CXX) $(CFLAGS) -shared $(LDFLAGS) -o $@ src/imagex.cpp -ljpeg -lpng
 
 clean:
 	$(MIX) clean
