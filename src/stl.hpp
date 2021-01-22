@@ -1,13 +1,12 @@
 #pragma once
-#include <array>
-#include <stdexcept>
-#include <vector>
-#include <map>
-#include <unordered_map>
 #include "casts.hpp"
+#include <array>
+#include <map>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
 
-
-template<typename T>
+template <typename T>
 struct type_cast<std::vector<T>>
 {
 private:
@@ -34,15 +33,14 @@ public:
         std::vector<ERL_NIF_TERM> nif_terms;
         nif_terms.reserve(items.size());
 
-        for (const auto& item: items)
+        for (const auto& item : items)
             nif_terms.push_back(type_cast<item_type>::handle(env, item));
 
         return enif_make_tuple_from_array(env, nif_terms.data(), nif_terms.size());
     }
 };
 
-
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 struct type_cast<std::array<T, N>>
 {
 private:
@@ -76,8 +74,7 @@ public:
     }
 };
 
-
-template<typename K, typename V>
+template <typename K, typename V>
 struct type_cast<std::unordered_map<K, V>>
 {
 private:
@@ -112,9 +109,9 @@ public:
     {
         ERL_NIF_TERM map_term = enif_make_new_map(env);
 
-        for (const auto& item: _map)
+        for (const auto& item : _map)
         {
-            ERL_NIF_TERM new_map_term; 
+            ERL_NIF_TERM new_map_term;
             ERL_NIF_TERM key_term = type_cast<key_type>::handle(env, item.first);
             ERL_NIF_TERM value_term = type_cast<value_type>::handle(env, item.second);
             enif_make_map_put(env, map_term, key_term, value_term, &new_map_term);
@@ -125,8 +122,7 @@ public:
     }
 };
 
-
-template<typename K, typename V>
+template <typename K, typename V>
 struct type_cast<std::map<K, V>>
 {
 private:
@@ -161,9 +157,9 @@ public:
     {
         ERL_NIF_TERM map_term = enif_make_new_map(env);
 
-        for (const auto& item: _map)
+        for (const auto& item : _map)
         {
-            ERL_NIF_TERM new_map_term; 
+            ERL_NIF_TERM new_map_term;
             ERL_NIF_TERM key_term = type_cast<key_type>::handle(env, item.first);
             ERL_NIF_TERM value_term = type_cast<value_type>::handle(env, item.second);
             enif_make_map_put(env, map_term, key_term, value_term, &new_map_term);

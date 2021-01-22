@@ -1,7 +1,6 @@
 #pragma once
-#include <erl_nif.h>
 #include "casts.hpp"
-
+#include <erl_nif.h>
 
 struct term
 {

@@ -4,7 +4,7 @@ defmodule ImagexTest do
 
   test "decode jpeg image" do
     {:ok, jpeg_bytes} = File.read("test/lena.jpg")
-    {pixels, width, height, channels} = Imagex.jpeg_decompress(jpeg_bytes)
+    {:ok, {pixels, width, height, channels}} = Imagex.jpeg_decompress(jpeg_bytes)
     assert width == 512
     assert height == 512
     assert channels == 3
@@ -18,7 +18,7 @@ defmodule ImagexTest do
 
   test "decode png image" do
     {:ok, png_bytes} = File.read("test/lena.png")
-    {pixels, width, height, channels} = Imagex.png_decompress(png_bytes)
+    {:ok, {pixels, width, height, channels}} = Imagex.png_decompress(png_bytes)
     assert width == 512
     assert height == 512
     assert channels == 3
@@ -32,11 +32,11 @@ defmodule ImagexTest do
 
   test "generic decode" do
     {:ok, jpeg_bytes} = File.read("test/lena.jpg")
-    {_pixels, width, height, channels} = Imagex.decode(jpeg_bytes)
+    {:ok, {_pixels, width, height, channels}} = Imagex.decode(jpeg_bytes)
     assert {width, height, channels} == {512, 512, 3}
 
     {:ok, png_bytes} = File.read("test/lena.png")
-    {_pixels, width, height, channels} = Imagex.decode(png_bytes)
+    {:ok, {_pixels, width, height, channels}} = Imagex.decode(png_bytes)
     assert {width, height, channels} == {512, 512, 3}
 
     assert Imagex.decode(<< 0, 1, 2 >>) == {:error, "failed to decode"}
