@@ -2,6 +2,7 @@
 #include <erl_nif.h>
 #include <iostream>
 #include <jpeglib.h>
+#include <memory>
 #include <png.h>
 #include <stdio.h>
 #include <tuple>
@@ -28,8 +29,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
 
     if (setjmp(err.setjmp_buffer))
     {
-        // jpeg_finish_decompress(cinfo);
-        // jpeg_destroy_decompress(cinfo);
+        jpeg_destroy_decompress(&cinfo);
         char error_message[JMSG_LENGTH_MAX];
         (*(cinfo.err->format_message))(reinterpret_cast<j_common_ptr>(&cinfo), error_message);
         return Error<string>(error_message);
@@ -91,12 +91,9 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
     if (!info_ptr)
         return Error("couldn't initialize png info struct"s);
 
-    png_bytep* row_ptrs = nullptr;
-
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-        delete[] row_ptrs;
         return Error("An error has occured while reading the PNG file"s);
     }
 
@@ -130,15 +127,14 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
         break;
     }
 
-    row_ptrs = new png_bytep[height];
+    auto row_ptrs = make_unique<png_bytep[]>(height);
     const unsigned int stride = width * bit_depth * channels / 8;
     binary output(height * stride);
     for (size_t i = 0; i < height; i++)
         row_ptrs[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
 
-    png_read_image(png_ptr, row_ptrs);
+    png_read_image(png_ptr, row_ptrs.get());
 
-    delete[] row_ptrs;
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
     return Ok(make_tuple(output, width, height, channels));
@@ -176,9 +172,9 @@ binary rgb2gray(const binary& bytes)
     return output;
 }
 
-ELIXIR_MODULE(
-    Imagex,
-    def(jpeg_decompress, "jpeg_decompress"),
-    def(png_decompress, "png_decompress"),
-    def(decode, "decode"),
-    def(rgb2gray, "rgb2gray"), )
+MODULE(
+    Elixir.Imagex,
+    def(jpeg_decompress),
+    def(png_decompress),
+    def(decode),
+    def(rgb2gray), )

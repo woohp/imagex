@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+
 template <typename T>
 struct type_cast<std::vector<T>>
 {
@@ -40,6 +41,7 @@ public:
     }
 };
 
+
 template <typename T, std::size_t N>
 struct type_cast<std::array<T, N>>
 {
@@ -73,6 +75,7 @@ public:
         return enif_make_tuple_from_array(env, nif_terms.data(), N);
     }
 };
+
 
 template <typename K, typename V>
 struct type_cast<std::unordered_map<K, V>>
@@ -121,6 +124,7 @@ public:
         return map_term;
     }
 };
+
 
 template <typename K, typename V>
 struct type_cast<std::map<K, V>>

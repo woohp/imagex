@@ -15,7 +15,7 @@ defmodule Imagex.MixProject do
     [
       app: :imagex,
       version: @version,
-      elixir: "~> 1.7",
+      elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       compilers: [:imagex, :elixir, :app],
       deps: deps()

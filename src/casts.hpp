@@ -1,20 +1,18 @@
 #pragma once
+#include "atom.hpp"
+#include "ext_types.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <erl_nif.h>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <tuple>
-#if __cplusplus >= 201700
 #include <variant>
-#define HAS_VARIANT
-#endif
-#include "atom.hpp"
-#include "ext_types.hpp"
-#include <erl_nif.h>
-#include <iostream>
 
 template <typename T>
 struct type_cast;
+
 
 class binary : public ErlNifBinary
 {
@@ -38,6 +36,7 @@ public:
     }
 };
 
+
 template <>
 struct type_cast<int>
 {
@@ -54,6 +53,7 @@ struct type_cast<int>
         return enif_make_int(env, i);
     }
 };
+
 
 template <>
 struct type_cast<uint32_t>
@@ -72,6 +72,7 @@ struct type_cast<uint32_t>
     }
 };
 
+
 template <>
 struct type_cast<int64_t>
 {
@@ -88,6 +89,7 @@ struct type_cast<int64_t>
         return enif_make_int64(env, i);
     }
 };
+
 
 template <>
 struct type_cast<uint64_t>
@@ -106,6 +108,7 @@ struct type_cast<uint64_t>
     }
 };
 
+
 template <>
 struct type_cast<double>
 {
@@ -122,6 +125,7 @@ struct type_cast<double>
         return enif_make_double(env, d);
     }
 };
+
 
 template <>
 struct type_cast<std::string>
@@ -143,6 +147,7 @@ struct type_cast<std::string>
     }
 };
 
+
 template <>
 struct type_cast<binary>
 {
@@ -162,6 +167,7 @@ struct type_cast<binary>
     }
 };
 
+
 template <>
 struct type_cast<atom>
 {
@@ -175,14 +181,15 @@ struct type_cast<atom>
         if (enif_get_atom(env, term, &s[0], len + 1, ERL_NIF_LATIN1) != int(len + 1))
             throw std::invalid_argument("invalid atom");
 
-        return atom(s);
+        return atom { s };
     }
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, const atom& a) noexcept
     {
-        return enif_make_atom_len(env, a.name.c_str(), a.name.length());
+        return enif_make_atom_len(env, a.name.data(), a.name.length());
     }
 };
+
 
 template <typename X, typename Y>
 struct type_cast<std::pair<X, Y>>
@@ -203,6 +210,7 @@ struct type_cast<std::pair<X, Y>>
         return enif_make_tuple2(env, type_cast<X>::handle(env, item.first), type_cast<Y>::handle(env, item.second));
     }
 };
+
 
 template <typename... Args>
 struct type_cast<std::tuple<Args...>>
@@ -239,8 +247,6 @@ public:
     }
 };
 
-
-#ifdef HAS_VARIANT
 
 template <typename... Args>
 struct type_cast<std::variant<Args...>>
@@ -293,14 +299,12 @@ private:
 public:
     static ERL_NIF_TERM handle(ErlNifEnv* env, const erl_result_type& result) noexcept
     {
+        static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"_atom);
+        static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"_atom);
+
         if (result.index() == 0)
-            return enif_make_tuple2(
-                env, type_cast<atom>::handle(env, atom("ok")), type_cast<OkType>::handle(env, std::get<0>(result)));
+            return enif_make_tuple2(env, ok_atom_term, type_cast<OkType>::handle(env, std::get<0>(result)));
         else
-            return enif_make_tuple2(
-                env,
-                type_cast<atom>::handle(env, atom("error")),
-                type_cast<ErrorType>::handle(env, std::get<1>(result)));
+            return enif_make_tuple2(env, error_atom_term, type_cast<ErrorType>::handle(env, std::get<1>(result)));
     };
 };
-#endif
