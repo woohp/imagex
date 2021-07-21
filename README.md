@@ -1,21 +1,19 @@
 # Imagex
 
-**TODO: Add description**
+Provides NIF wrappers for loading and saving common images (jpeg and png for now).
 
-## Installation
+## Usage
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `imagex` to your list of dependencies in `mix.exs`:
+To load a jpeg image
 
 ```elixir
-def deps do
-  [
-    {:imagex, "~> 0.1.0"}
-  ]
-end
+{:ok, jpeg_bytes} = File.read("test/lena.jpg")
+{:ok, {pixels, width, height, channels}} = Imagex.jpeg_decompress(jpeg_bytes)
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/imagex](https://hexdocs.pm/imagex).
+To load any image
 
+```elixir
+{:ok, png_bytes} = File.read("test/lena.png")
+{:ok, {pixels, width, height, channels}} = Imagex.decode(png_bytes)
+```
