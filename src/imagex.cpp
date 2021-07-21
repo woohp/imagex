@@ -19,8 +19,8 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
     struct jpeg_decompress_struct cinfo;
 
     /* create decompressor */
-    jpeg_create_decompress(&cinfo);
     cinfo.err = jpeg_std_error(&err);
+    jpeg_create_decompress(&cinfo);
     cinfo.do_fancy_upsampling = FALSE;
     err.error_exit = [](j_common_ptr cinfo) {
         auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
@@ -29,9 +29,9 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
 
     if (setjmp(err.setjmp_buffer))
     {
-        jpeg_destroy_decompress(&cinfo);
         char error_message[JMSG_LENGTH_MAX];
         (*(cinfo.err->format_message))(reinterpret_cast<j_common_ptr>(&cinfo), error_message);
+        jpeg_destroy_decompress(&cinfo);
         return Error<string>(error_message);
     }
 
@@ -59,6 +59,59 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
     jpeg_destroy_decompress(&cinfo);
     return Ok(
         make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
+}
+
+erl_result<binary, string> jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+{
+    struct my_jpeg_error_mgr err;
+    struct jpeg_compress_struct cinfo;
+
+    // create the compressor
+    cinfo.err = jpeg_std_error(&err);
+    jpeg_create_compress(&cinfo);
+    err.error_exit = [](j_common_ptr cinfo) {
+        auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
+        longjmp(myerr->setjmp_buffer, 1);
+    };
+
+    if (setjmp(err.setjmp_buffer))
+    {
+        char error_message[JMSG_LENGTH_MAX];
+        (*(cinfo.err->format_message))(reinterpret_cast<j_common_ptr>(&cinfo), error_message);
+        jpeg_destroy_compress(&cinfo);
+        return Error<string>(error_message);
+    }
+
+    unsigned char* buf = nullptr;
+    unsigned long outsize = 0;
+    jpeg_mem_dest(&cinfo, &buf, &outsize);
+
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = channels;
+    cinfo.in_color_space = JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 75, TRUE);
+
+    // do the actual compression
+    jpeg_start_compress(&cinfo, TRUE);
+    while (cinfo.next_scanline < cinfo.image_height)
+    {
+        auto row = pixels.data + cinfo.next_scanline * channels * width;
+        jpeg_write_scanlines(&cinfo, &row, 1);
+    }
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+
+    // copy the buf to a binary objet
+    // string out(size_t(outsize), ' ');
+    binary out{size_t(outsize)};
+    std::copy_n(buf, outsize, out.data);
+
+    free(buf);  // free the buf created by jpeg_mem_dest
+
+    return Ok(std::move(out));
 }
 
 struct png_read_binary
@@ -137,7 +190,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
 
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
-    return Ok(make_tuple(output, width, height, channels));
+    return Ok(make_tuple(std::move(output), width, height, channels));
 }
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> decode(const binary& bytes) noexcept
@@ -174,7 +227,8 @@ binary rgb2gray(const binary& bytes)
 
 MODULE(
     Elixir.Imagex,
-    def(jpeg_decompress),
-    def(png_decompress),
-    def(decode),
-    def(rgb2gray), )
+    def(jpeg_decompress, DirtyFlags::DirtyCpu),
+    def(jpeg_compress, DirtyFlags::DirtyCpu),
+    def(png_decompress, DirtyFlags::DirtyCpu),
+    def(decode, DirtyFlags::DirtyCpu),
+    def(rgb2gray, DirtyFlags::NotDirty), )

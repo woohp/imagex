@@ -16,6 +16,13 @@ defmodule ImagexTest do
     assert String.starts_with?(error_reason, "Not a JPEG file")
   end
 
+  test "encode jpeg image" do
+    {:ok, jpeg_bytes} = File.read("test/lena.jpg")
+    {:ok, {pixels, width, height, channels}} = Imagex.jpeg_decompress(jpeg_bytes)
+    {:ok, compressed_bytes} = Imagex.jpeg_compress(pixels, width, height, channels)
+    assert byte_size(compressed_bytes) < width * height * channels
+  end
+
   test "decode png image" do
     {:ok, png_bytes} = File.read("test/lena.png")
     {:ok, {pixels, width, height, channels}} = Imagex.png_decompress(png_bytes)

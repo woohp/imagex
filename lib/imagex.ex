@@ -22,6 +22,10 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
+  def jpeg_compress(_pixels, _width, _height, _channels) do
+    exit(:nif_library_not_loaded)
+  end
+
   def png_decompress(_bytes) do
     exit(:nif_library_not_loaded)
   end

@@ -17,7 +17,7 @@ struct erl_error : erl_error_base
 {
     T error_value;
 
-    explicit erl_error(const T& error_value)
+    constexpr explicit erl_error(const T& error_value)
         : error_value(error_value)
     { }
 
@@ -34,7 +34,7 @@ struct Ok
 {
     OkType value;
 
-    explicit Ok(OkType value)
+    constexpr explicit Ok(OkType value)
         : value(std::move(value))
     { }
 };
@@ -45,7 +45,7 @@ struct Error
 {
     ErrorType value;
 
-    explicit Error(ErrorType value)
+    constexpr explicit Error(ErrorType value)
         : value(std::move(value))
     { }
 };
@@ -54,15 +54,15 @@ struct Error
 template <typename OkType, typename ErrorType>
 struct erl_result : std::variant<OkType, ErrorType>
 {
-    erl_result(Ok<OkType> ok_value)
+    constexpr erl_result(Ok<OkType> ok_value)
         : std::variant<OkType, ErrorType>(std::in_place_index<0>, std::move(ok_value.value))
     { }
 
-    erl_result(Error<ErrorType> error_value)
+    constexpr erl_result(Error<ErrorType> error_value)
         : std::variant<OkType, ErrorType>(std::in_place_index<1>, std::move(error_value.value))
     { }
 
-    bool ok() const
+    constexpr bool ok() const
     {
         return this->index() == 0;
     }

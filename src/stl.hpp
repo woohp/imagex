@@ -14,7 +14,7 @@ private:
     typedef std::decay_t<T> item_type;
 
 public:
-    static std::vector<T> load(ErlNifEnv* env, const ERL_NIF_TERM term)
+    constexpr static std::vector<T> load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
         const ERL_NIF_TERM* tup_array;
         int arity;
@@ -50,7 +50,7 @@ private:
     typedef std::array<item_type, N> array_type;
 
 public:
-    static array_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
+    constexpr static array_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
         const ERL_NIF_TERM* tup_array;
         int arity;
@@ -66,7 +66,7 @@ public:
         return items;
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const array_type& items) noexcept
+    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const array_type& items) noexcept
     {
         std::array<ERL_NIF_TERM, N> nif_terms;
         for (std::size_t i = 0; i < N; i++)
@@ -86,7 +86,7 @@ private:
     typedef std::unordered_map<key_type, value_type> map_type;
 
 public:
-    static map_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
+    constexpr static map_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
         map_type _map;
         std::size_t size;
@@ -108,7 +108,7 @@ public:
         return _map;
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const map_type& _map) noexcept
+    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const map_type& _map) noexcept
     {
         ERL_NIF_TERM map_term = enif_make_new_map(env);
 
@@ -135,7 +135,7 @@ private:
     typedef std::map<key_type, value_type> map_type;
 
 public:
-    static map_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
+    constexpr static map_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
         map_type _map;
         std::size_t size;
@@ -157,7 +157,7 @@ public:
         return _map;
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const map_type& _map) noexcept
+    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const map_type& _map) noexcept
     {
         ERL_NIF_TERM map_term = enif_make_new_map(env);
 

@@ -17,22 +17,38 @@ struct type_cast;
 class binary : public ErlNifBinary
 {
 private:
-    bool needs_release = false;
+    ERL_NIF_TERM _term = 0;
 
     friend struct type_cast<binary>;
 
     binary() { }
 
 public:
-    explicit binary(unsigned size)
+    explicit binary(size_t size)
     {
-        needs_release = enif_alloc_binary(size, this);
+        enif_alloc_binary(size, this);
     }
+
+    binary(binary&& other)
+    {
+        memcpy(this, &other, sizeof(ErlNifBinary));  // use memcpy to bitwise copy the full struct, including the opaque fields
+        this->_term = other._term;
+
+        other.size = 0;
+        other.data = nullptr;
+        other._term = 0;
+    }
+
+    binary(const binary& other) = delete;
 
     ~binary()
     {
-        if (needs_release)
+        if (!this->_term && this->data)
+        {
             enif_release_binary(this);
+            this->size = 0;
+            this->data = nullptr;
+        }
     }
 };
 
@@ -156,14 +172,19 @@ struct type_cast<binary>
         binary b;
         if (!enif_inspect_binary(env, term, &b))
             throw std::invalid_argument("invalid binary");
+        b._term = term;
         return b;
     }
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, const binary& b) noexcept
     {
+        if (b._term)
+            return b._term;
+
         auto b_ = const_cast<binary*>(&b);
-        b_->needs_release = false;
-        return enif_make_binary(env, reinterpret_cast<ErlNifBinary*>(b_));
+        b_->_term = enif_make_binary(env, reinterpret_cast<ErlNifBinary*>(b_));
+
+        return b_->_term;
     }
 };
 
@@ -194,9 +215,9 @@ struct type_cast<atom>
 template <typename X, typename Y>
 struct type_cast<std::pair<X, Y>>
 {
-    static std::pair<X, Y> load(ErlNifEnv* env, ERL_NIF_TERM term)
+    constexpr static std::pair<X, Y> load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
-        const ERL_NIF_TERM* tup_array;
+        const ERL_NIF_TERM* tup_array = nullptr;
         int arity;
         if (!enif_get_tuple(env, term, &arity, &tup_array))
             throw std::invalid_argument("invalid pair");
@@ -205,7 +226,7 @@ struct type_cast<std::pair<X, Y>>
         return std::pair<X, Y>(type_cast<X>::load(env, tup_array[0]), type_cast<Y>::load(env, tup_array[1]));
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::pair<X, Y>& item) noexcept
+    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const std::pair<X, Y>& item) noexcept
     {
         return enif_make_tuple2(env, type_cast<X>::handle(env, item.first), type_cast<Y>::handle(env, item.second));
     }
@@ -219,13 +240,14 @@ private:
     typedef std::tuple<Args...> tuple_type;
 
     template <std::size_t... I>
-    static tuple_type load_impl(ErlNifEnv* env, const ERL_NIF_TERM* tup_array, std::index_sequence<I...>)
+    constexpr static tuple_type load_impl(ErlNifEnv* env, const ERL_NIF_TERM* tup_array, std::index_sequence<I...>)
     {
         return tuple_type(type_cast<std::decay_t<Args>>::load(env, tup_array[I])...);
     }
 
     template <std::size_t... I>
-    static ERL_NIF_TERM handle_impl(ErlNifEnv* env, const tuple_type& items, std::index_sequence<I...>) noexcept
+    constexpr static ERL_NIF_TERM
+    handle_impl(ErlNifEnv* env, const tuple_type& items, std::index_sequence<I...>) noexcept
     {
         return enif_make_tuple(
             env, std::tuple_size_v<tuple_type>, type_cast<std::decay_t<Args>>::handle(env, std::get<I>(items))...);
@@ -255,7 +277,7 @@ private:
     typedef std::variant<Args...> variant_type;
 
     template <int I, typename T, typename... Rest>
-    static variant_type load_impl(ErlNifEnv* env, ERL_NIF_TERM term)
+    constexpr static variant_type load_impl(ErlNifEnv* env, ERL_NIF_TERM term)
     {
         try
         {
@@ -271,12 +293,12 @@ private:
     }
 
 public:
-    static variant_type load(ErlNifEnv* env, ERL_NIF_TERM term)
+    constexpr static variant_type load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
         return type_cast<std::variant<Args...>>::load_impl<0, Args...>(env, term);
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const variant_type& item) noexcept
+    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const variant_type& item) noexcept
     {
         return std::visit(
             [env, &item](auto&& arg) {
