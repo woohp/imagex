@@ -61,7 +61,8 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
         make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
 }
 
-erl_result<binary, string> jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+erl_result<binary, string>
+jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
 {
     struct my_jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
@@ -92,7 +93,7 @@ erl_result<binary, string> jpeg_compress(const binary& pixels, uint32_t width, u
     cinfo.in_color_space = JCS_RGB;
 
     jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, 75, TRUE);
+    jpeg_set_quality(&cinfo, quality, TRUE);
 
     // do the actual compression
     jpeg_start_compress(&cinfo, TRUE);
@@ -106,7 +107,7 @@ erl_result<binary, string> jpeg_compress(const binary& pixels, uint32_t width, u
 
     // copy the buf to a binary objet
     // string out(size_t(outsize), ' ');
-    binary out{size_t(outsize)};
+    binary out { size_t(outsize) };
     std::copy_n(buf, outsize, out.data);
 
     free(buf);  // free the buf created by jpeg_mem_dest
@@ -228,7 +229,7 @@ binary rgb2gray(const binary& bytes)
 MODULE(
     Elixir.Imagex,
     def(jpeg_decompress, DirtyFlags::DirtyCpu),
-    def(jpeg_compress, DirtyFlags::DirtyCpu),
+    def(jpeg_compress, "jpeg_compress_impl", DirtyFlags::DirtyCpu),
     def(png_decompress, DirtyFlags::DirtyCpu),
     def(decode, DirtyFlags::DirtyCpu),
     def(rgb2gray, DirtyFlags::NotDirty), )

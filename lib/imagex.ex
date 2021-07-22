@@ -22,8 +22,13 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
-  def jpeg_compress(_pixels, _width, _height, _channels) do
+  def jpeg_compress_impl(_pixels, _width, _height, _channels, _quality) do
     exit(:nif_library_not_loaded)
+  end
+
+  def jpeg_compress(pixels, width, height, channels, options \\ []) do
+    quality = Keyword.get(options, :quality, 75)
+    jpeg_compress_impl(pixels, width, height, channels, quality)
   end
 
   def png_decompress(_bytes) do

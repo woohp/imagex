@@ -21,7 +21,11 @@ private:
 
     friend struct type_cast<binary>;
 
-    binary() { }
+    binary()
+    {
+        this->size = 0;
+        this->data = nullptr;
+    }
 
 public:
     explicit binary(size_t size)
@@ -31,8 +35,10 @@ public:
 
     binary(binary&& other)
     {
-        memcpy(this, &other, sizeof(ErlNifBinary));  // use memcpy to bitwise copy the full struct, including the opaque fields
-        this->_term = other._term;
+        memcpy(
+            this,
+            &other,
+            sizeof(binary));  // use memcpy to bitwise copy the full struct, including the opaque fields
 
         other.size = 0;
         other.data = nullptr;
