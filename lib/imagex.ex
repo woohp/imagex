@@ -39,8 +39,35 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
-  def decode(_bytes) do
+  def jxl_decompress(_bytes) do
     exit(:nif_library_not_loaded)
+  end
+
+  def jxl_compress_impl(_pixels, _width, _height, _channels, _lossless) do
+    exit(:nif_library_not_loaded)
+  end
+
+  def jxl_compress(pixels, width, height, channels, options \\ []) do
+    lossless =
+      case Keyword.get(options, :lossless, 0) do
+        1 -> 1
+        0 -> 0
+        false -> 0
+        true -> 1
+      end
+
+    jxl_compress_impl(pixels, width, height, channels, lossless)
+  end
+
+  def decode(bytes) do
+    methods = [{:jpeg, :jpeg_decompress}, {:png, :png_decompress}, {:jxl, :jxl_decompress}]
+
+    Enum.reduce_while(methods, nil, fn {name, method}, acc ->
+      case apply(__MODULE__, method, [bytes]) do
+        {:ok, image} -> {:halt, {name, image}}
+        {:error, _reason} -> {:cont, acc}
+      end
+    end)
   end
 
   def rgb2gray(_pixels) do
