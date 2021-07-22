@@ -16,28 +16,50 @@ private:
 public:
     constexpr static std::vector<T> load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
-        const ERL_NIF_TERM* tup_array;
-        int arity;
-        if (!enif_get_tuple(env, term, &arity, &tup_array))
-            throw std::invalid_argument("invalid vector/tuple");
+        if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> || std::is_same_v<T, std::byte>)
+        {
+            ErlNifBinary binary_info;
+            if (!enif_inspect_binary(env, term, &binary_info))
+                throw std::invalid_argument("invalid string");
+            auto begin = reinterpret_cast<const T*>(binary_info.data);
+            auto end = begin + binary_info.size;
+            return std::vector<T>(begin, end);
+        }
+        else
+        {
+            const ERL_NIF_TERM* tup_array;
+            int arity;
+            if (!enif_get_tuple(env, term, &arity, &tup_array))
+                throw std::invalid_argument("invalid vector/tuple");
 
-        std::vector<T> items;
-        items.reserve(arity);
-        for (int i = 0; i < arity; i++)
-            items.push_back(type_cast<item_type>::load(env, tup_array[i]));
+            std::vector<T> items;
+            items.reserve(arity);
+            for (int i = 0; i < arity; i++)
+                items.push_back(type_cast<item_type>::load(env, tup_array[i]));
 
-        return items;
+            return items;
+        }
     }
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, const std::vector<T>& items) noexcept
     {
-        std::vector<ERL_NIF_TERM> nif_terms;
-        nif_terms.reserve(items.size());
+        if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> || std::is_same_v<T, std::byte>)
+        {
+            ErlNifBinary binary_info;
+            enif_alloc_binary(items.size(), &binary_info);
+            std::copy_n(items.data(), items.size(), binary_info.data);
+            return enif_make_binary(env, &binary_info);
+        }
+        else
+        {
+            std::vector<ERL_NIF_TERM> nif_terms;
+            nif_terms.reserve(items.size());
 
-        for (const auto& item : items)
-            nif_terms.push_back(type_cast<item_type>::handle(env, item));
+            for (const auto& item : items)
+                nif_terms.push_back(type_cast<item_type>::handle(env, item));
 
-        return enif_make_tuple_from_array(env, nif_terms.data(), nif_terms.size());
+            return enif_make_tuple_from_array(env, nif_terms.data(), nif_terms.size());
+        }
     }
 };
 

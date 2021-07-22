@@ -27,6 +27,8 @@ private:
         this->data = nullptr;
     }
 
+    binary& operator=(const binary&) = default;
+
 public:
     explicit binary(size_t size)
     {
@@ -35,10 +37,7 @@ public:
 
     binary(binary&& other)
     {
-        memcpy(
-            this,
-            &other,
-            sizeof(binary));  // use memcpy to bitwise copy the full struct, including the opaque fields
+        *this = other;  // trivially copy first
 
         other.size = 0;
         other.data = nullptr;

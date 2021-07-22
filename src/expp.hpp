@@ -16,14 +16,13 @@ struct function_traits<R (*)(Args...) noexcept(IsNoexcept)>
     static constexpr bool is_noexcept = IsNoexcept;
 
     template <func_type fn, std::size_t... I>
-    constexpr static R
-    apply_impl(ErlNifEnv* env, const ERL_NIF_TERM argv[], std::index_sequence<I...>) noexcept(IsNoexcept)
+    constexpr static R apply_impl(ErlNifEnv* env, const ERL_NIF_TERM argv[], std::index_sequence<I...>)
     {
         return fn(type_cast<std::decay_t<Args>>::load(env, argv[I])...);
     }
 
     template <func_type fn>
-    constexpr static R apply(ErlNifEnv* env, const ERL_NIF_TERM argv[]) noexcept(IsNoexcept)
+    constexpr static R apply(ErlNifEnv* env, const ERL_NIF_TERM argv[])
     {
         return apply_impl<fn>(env, argv, std::make_index_sequence<nargs> {});
     }
@@ -31,37 +30,27 @@ struct function_traits<R (*)(Args...) noexcept(IsNoexcept)>
 
 
 template <typename Fn, Fn fn>
-constexpr ERL_NIF_TERM
-wrapper(ErlNifEnv* env, int, const ERL_NIF_TERM argv[]) noexcept(function_traits<Fn>::is_noexcept)
+constexpr ERL_NIF_TERM wrapper(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
 {
     using func_traits = function_traits<Fn>;
 
-    if constexpr (func_traits::is_noexcept)
+    try
     {
         auto ret = func_traits::template apply<fn>(env, argv);
         return type_cast<std::decay_t<decltype(ret)>>::handle(env, std::move(ret));
     }
-
-    else
+    catch (const std::invalid_argument& e)
     {
-        try
-        {
-            auto ret = func_traits::template apply<fn>(env, argv);
-            return type_cast<std::decay_t<decltype(ret)>>::handle(env, std::move(ret));
-        }
-        catch (const std::invalid_argument& e)
-        {
-            return enif_make_badarg(env);
-        }
-        catch (const erl_error_base& e)
-        {
-            return e.get_term(env);
-        }
-        catch (const std::exception& e)
-        {
-            auto reason = type_cast<std::string>::handle(env, e.what());
-            return enif_raise_exception(env, reason);
-        }
+        return enif_make_badarg(env);
+    }
+    catch (const erl_error_base& e)
+    {
+        return e.get_term(env);
+    }
+    catch (const std::exception& e)
+    {
+        auto reason = type_cast<std::string>::handle(env, e.what());
+        return enif_raise_exception(env, reason);
     }
 }
 

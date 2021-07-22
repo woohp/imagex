@@ -1,4 +1,5 @@
 #include "expp.hpp"
+#include "stl.hpp"
 #include <erl_nif.h>
 #include <iostream>
 #include <jpeglib.h>
@@ -6,12 +7,22 @@
 #include <png.h>
 #include <stdio.h>
 #include <tuple>
+#include <vector>
 using namespace std;
+
 
 struct my_jpeg_error_mgr : jpeg_error_mgr
 {
     jmp_buf setjmp_buffer;
 };
+
+
+void jpeg_error_exit(j_common_ptr cinfo)
+{
+    auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
+    longjmp(myerr->setjmp_buffer, 1);
+}
+
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(const binary& jpeg_bytes) noexcept
 {
@@ -22,10 +33,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
     cinfo.err = jpeg_std_error(&err);
     jpeg_create_decompress(&cinfo);
     cinfo.do_fancy_upsampling = FALSE;
-    err.error_exit = [](j_common_ptr cinfo) {
-        auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
-        longjmp(myerr->setjmp_buffer, 1);
-    };
+    err.error_exit = jpeg_error_exit;
 
     if (setjmp(err.setjmp_buffer))
     {
@@ -61,6 +69,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
         make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
 }
 
+
 erl_result<binary, string>
 jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
 {
@@ -70,10 +79,7 @@ jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t ch
     // create the compressor
     cinfo.err = jpeg_std_error(&err);
     jpeg_create_compress(&cinfo);
-    err.error_exit = [](j_common_ptr cinfo) {
-        auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
-        longjmp(myerr->setjmp_buffer, 1);
-    };
+    err.error_exit = jpeg_error_exit;
 
     if (setjmp(err.setjmp_buffer))
     {
@@ -83,7 +89,7 @@ jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t ch
         return Error<string>(error_message);
     }
 
-    unsigned char* buf = nullptr;
+    uint8_t* buf = nullptr;
     unsigned long outsize = 0;
     jpeg_mem_dest(&cinfo, &buf, &outsize);
 
@@ -115,6 +121,7 @@ jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t ch
     return Ok(std::move(out));
 }
 
+
 struct png_read_binary
 {
     const binary& data;
@@ -130,6 +137,7 @@ struct png_read_binary
         this->offset += size_to_read;
     }
 };
+
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(const binary& png_bytes) noexcept
 {
@@ -181,18 +189,72 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
         break;
     }
 
-    auto row_ptrs = make_unique<png_bytep[]>(height);
+    auto row_pointers = make_unique<png_bytep[]>(height);
     const unsigned int stride = width * bit_depth * channels / 8;
     binary output(height * stride);
     for (size_t i = 0; i < height; i++)
-        row_ptrs[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
+        row_pointers[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
 
-    png_read_image(png_ptr, row_ptrs.get());
+    png_read_image(png_ptr, row_pointers.get());
 
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
     return Ok(make_tuple(std::move(output), width, height, channels));
 }
+
+
+erl_result<vector<uint8_t>, string>
+png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+{
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr)
+        return Error("couldn't initialize png write struct"s);
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr)
+        return Error("[write_png_file] png_create_info_struct failed"s);
+
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        return Error("[write_png_file] Error during init_io"s);
+    }
+
+    // set up the output data, as well as the callback to write into that data
+    vector<png_byte> out_data;
+    auto png_chunk_producer = [](png_structp png_ptr, png_bytep data, png_size_t length) {
+        auto out_data_p = reinterpret_cast<vector<png_byte>*>(png_get_io_ptr(png_ptr));
+        std::copy_n(data, length, std::back_inserter(*out_data_p));
+    };
+    png_set_write_fn(png_ptr, &out_data, png_chunk_producer, nullptr);
+
+    // write header
+    png_set_IHDR(
+        png_ptr,
+        info_ptr,
+        width,
+        height,
+        8,
+        PNG_COLOR_TYPE_RGB,
+        PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_BASE,
+        PNG_FILTER_TYPE_BASE);
+    png_write_info(png_ptr, info_ptr);
+
+    // write the pixels
+    auto row_pointers = make_unique<png_bytep[]>(height);
+    const unsigned int stride = width * channels;
+    for (size_t i = 0; i < height; i++)
+        row_pointers[i] = reinterpret_cast<png_bytep>(pixels.data + i * stride);
+    png_write_image(png_ptr, row_pointers.get());
+
+    // cleanup
+    png_write_end(png_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+
+    return Ok(out_data);
+}
+
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> decode(const binary& bytes) noexcept
 {
@@ -211,6 +273,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> decode(const bin
     return Error("failed to decode"s);
 }
 
+
 binary rgb2gray(const binary& bytes)
 {
     binary output(bytes.size / 3);
@@ -219,17 +282,19 @@ binary rgb2gray(const binary& bytes)
 
     for (unsigned i = 0, j = 0; i < bytes.size; i += 3, j++)
     {
-        output_bytes[j] = static_cast<unsigned char>(
+        output_bytes[j] = static_cast<uint8_t>(
             (input_bytes[i] * 299 + input_bytes[i + 1] * 587 + input_bytes[i + 2] * 114) / 1000);
     }
 
     return output;
 }
 
+
 MODULE(
     Elixir.Imagex,
     def(jpeg_decompress, DirtyFlags::DirtyCpu),
     def(jpeg_compress, "jpeg_compress_impl", DirtyFlags::DirtyCpu),
     def(png_decompress, DirtyFlags::DirtyCpu),
+    def(png_compress, DirtyFlags::DirtyCpu),
     def(decode, DirtyFlags::DirtyCpu),
     def(rgb2gray, DirtyFlags::NotDirty), )
