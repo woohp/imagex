@@ -58,7 +58,8 @@ struct erl_result : std::variant<OkType, ErrorType>
         : std::variant<OkType, ErrorType>(std::in_place_index<0>, std::move(ok_value.value))
     { }
 
-    constexpr erl_result(Error<ErrorType> error_value)
+    template <typename U>
+    constexpr erl_result(Error<U> error_value)
         : std::variant<OkType, ErrorType>(std::in_place_index<1>, std::move(error_value.value))
     { }
 

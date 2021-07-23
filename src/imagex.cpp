@@ -149,20 +149,20 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
 {
     // check png signature
     if (png_sig_cmp(png_bytes.data, 0, 8))
-        return Error("invalid png header"s);
+        return Error("invalid png header");
 
     png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
-        return Error("couldn't initialize png read struct"s);
+        return Error("couldn't initialize png read struct");
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("couldn't initialize png info struct"s);
+        return Error("couldn't initialize png info struct");
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-        return Error("An error has occured while reading the PNG file"s);
+        return Error("An error has occured while reading the PNG file");
     }
 
     png_read_binary data_wrapper(png_bytes);
@@ -214,16 +214,16 @@ png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
 {
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
-        return Error("couldn't initialize png write struct"s);
+        return Error("couldn't initialize png write struct");
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("[write_png_file] png_create_info_struct failed"s);
+        return Error("[write_png_file] png_create_info_struct failed");
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_write_struct(&png_ptr, &info_ptr);
-        return Error("[write_png_file] Error during init_io"s);
+        return Error("[write_png_file] Error during init_io");
     }
 
     // set up the output data, as well as the callback to write into that data
@@ -271,12 +271,12 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
     if (JxlDecoderSubscribeEvents(dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE)
         != JXL_DEC_SUCCESS)
     {
-        return Error("JxlDecoderSubscribeEvents failed"s);
+        return Error("JxlDecoderSubscribeEvents failed");
     }
 
     if (JxlDecoderSetParallelRunner(dec.get(), JxlThreadParallelRunner, runner.get()) != JXL_DEC_SUCCESS)
     {
-        return Error("JxlDecoderSetParallelRunner failed"s);
+        return Error("JxlDecoderSetParallelRunner failed");
     }
 
     JxlPixelFormat format = { 3, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
@@ -294,18 +294,18 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
 
         if (status == JXL_DEC_ERROR)
         {
-            return Error("Decoder error"s);
+            return Error("Decoder error");
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return Error("Error, already provided all input"s);
+            return Error("Error, already provided all input");
         }
         else if (status == JXL_DEC_BASIC_INFO)
         {
             JxlBasicInfo info;
             if (JxlDecoderGetBasicInfo(dec.get(), &info) != JXL_DEC_SUCCESS)
             {
-                return Error("JxlDecoderGetBasicInfo failed"s);
+                return Error("JxlDecoderGetBasicInfo failed");
             }
             width = info.xsize;
             height = info.ysize;
@@ -318,7 +318,7 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
             if (JxlDecoderGetICCProfileSize(dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, &icc_size)
                 != JXL_DEC_SUCCESS)
             {
-                return Error("JxlDecoderGetICCProfileSize failed"s);
+                return Error("JxlDecoderGetICCProfileSize failed");
             }
             // icc_profile->resize(icc_size);
             // if (JxlDecoderGetColorAsICCProfile(
@@ -333,19 +333,19 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
             size_t buffer_size;
             if (JxlDecoderImageOutBufferSize(dec.get(), &format, &buffer_size) != JXL_DEC_SUCCESS)
             {
-                return Error("JxlDecoderImageOutBufferSize failed"s);
+                return Error("JxlDecoderImageOutBufferSize failed");
             }
             if (buffer_size != width * height * 3)
             {
                 // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
-                return Error("Invalid out buffer size"s);
+                return Error("Invalid out buffer size");
             }
             pixels.resize(buffer_size);
             void* pixels_buffer = (void*)pixels.data();
             size_t pixels_buffer_size = pixels.size() * sizeof(uint8_t);
             if (JxlDecoderSetImageOutBuffer(dec.get(), &format, pixels_buffer, pixels_buffer_size) != JXL_DEC_SUCCESS)
             {
-                return Error("JxlDecoderSetImageOutBuffer failed"s);
+                return Error("JxlDecoderSetImageOutBuffer failed");
             }
         }
         else if (status == JXL_DEC_FULL_IMAGE)
@@ -362,7 +362,7 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
         }
         else
         {
-            return Error("Unknown decoder status"s);
+            return Error("Unknown decoder status");
         }
     }
 }
