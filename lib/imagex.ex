@@ -38,7 +38,7 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_compress_impl(_pixels, _width, _height, _channels, _lossless) do
+  def jxl_compress_impl(_pixels, _width, _height, _channels, _distance, _lossless, _effort) do
     exit(:nif_library_not_loaded)
   end
 
@@ -72,6 +72,11 @@ defmodule Imagex do
   end
 
   def jxl_compress(pixels, width, height, channels, options \\ []) do
+    distance =
+      case Keyword.get(options, :distance, 1.0) do
+        value when 0 <= value and value <= 15 -> value
+      end
+
     lossless =
       case Keyword.get(options, :lossless, 0) do
         1 -> 1
@@ -80,7 +85,19 @@ defmodule Imagex do
         true -> 1
       end
 
-    jxl_compress_impl(pixels, width, height, channels, lossless)
+    effort =
+      case Keyword.get(options, :effort, 7) do
+        value when value in 3..9 -> value
+        :falcon -> 3
+        :cheetah -> 4
+        :hare -> 5
+        :wombat -> 6
+        :squirrel -> 7
+        :kitten -> 8
+        :tortoise -> 9
+      end
+
+    jxl_compress_impl(pixels, width, height, channels, distance, lossless, effort)
   end
 
   def decode(bytes) do

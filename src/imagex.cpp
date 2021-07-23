@@ -341,9 +341,8 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
                 return Error("Invalid out buffer size");
             }
             pixels.resize(buffer_size);
-            void* pixels_buffer = (void*)pixels.data();
             size_t pixels_buffer_size = pixels.size() * sizeof(uint8_t);
-            if (JxlDecoderSetImageOutBuffer(dec.get(), &format, pixels_buffer, pixels_buffer_size) != JXL_DEC_SUCCESS)
+            if (JxlDecoderSetImageOutBuffer(dec.get(), &format, pixels.data(), pixels_buffer_size) != JXL_DEC_SUCCESS)
             {
                 return Error("JxlDecoderSetImageOutBuffer failed");
             }
@@ -368,16 +367,14 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
 }
 
 
-erl_result<vector<uint8_t>, string>
-jxl_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, int lossless)
+erl_result<vector<uint8_t>, string> jxl_compress(
+    const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, double distance, int lossless, int effort)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     auto runner = JxlThreadParallelRunnerMake(
         /*memory_manager=*/nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
     if (JxlEncoderSetParallelRunner(enc.get(), JxlThreadParallelRunner, runner.get()) != JXL_ENC_SUCCESS)
-    {
-        return Error("JxlEncoderSetParallelRunner failed"s);
-    }
+        return Error("JxlEncoderSetParallelRunner failed");
 
     JxlPixelFormat pixel_format = { channels, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
 
@@ -390,29 +387,25 @@ jxl_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
     basic_info.alpha_bits = 0;
     basic_info.uses_original_profile = JXL_FALSE;
     if (JxlEncoderSetBasicInfo(enc.get(), &basic_info) != JXL_ENC_SUCCESS)
-    {
-        return Error("JxlEncoderSetBasicInfo failed"s);
-    }
+        return Error("JxlEncoderSetBasicInfo failed");
 
     JxlColorEncoding color_encoding = {};
     JxlColorEncodingSetToSRGB(
         &color_encoding,
         /*is_gray=*/pixel_format.num_channels < 3);
     if (JxlEncoderSetColorEncoding(enc.get(), &color_encoding) != JXL_ENC_SUCCESS)
-    {
         return Error("JxlEncoderSetColorEncoding failed"s);
-    }
 
     auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
 
     JxlEncoderOptionsSetLossless(encoder_options, lossless);
+    JxlEncoderOptionsSetDistance(encoder_options, distance);
+    JxlEncoderOptionsSetEffort(encoder_options, effort);
 
     if (JxlEncoderAddImageFrame(
             encoder_options, &pixel_format, reinterpret_cast<void*>(pixels.data), sizeof(uint8_t) * pixels.size)
         != JXL_ENC_SUCCESS)
-    {
-        return Error("JxlEncoderAddImageFrame failed"s);
-    }
+        return Error("JxlEncoderAddImageFrame failed");
 
     std::vector<uint8_t> compressed(64);
     uint8_t* next_out = compressed.data();
@@ -430,7 +423,7 @@ jxl_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
     }
     compressed.resize(next_out - compressed.data());
     if (process_result != JXL_ENC_SUCCESS)
-        return Error("JxlEncoderProcessOutput failed"s);
+        return Error("JxlEncoderProcessOutput failed");
 
     return Ok(compressed);
 }
