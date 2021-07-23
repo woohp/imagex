@@ -18,7 +18,7 @@ defmodule Imagex do
     :ok = :erlang.load_nif(path, 0)
   end
 
-  def jpeg_decompress(_bytes) do
+  def jpeg_decompress_impl(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
@@ -26,25 +26,49 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
-  def jpeg_compress(pixels, width, height, channels, options \\ []) do
-    quality = Keyword.get(options, :quality, 75)
-    jpeg_compress_impl(pixels, width, height, channels, quality)
-  end
-
-  def png_decompress(_bytes) do
+  def png_decompress_impl(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def png_compress(_pixels, _width, _height, _channels) do
+  def png_compress_impl(_pixels, _width, _height, _channels) do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_decompress(_bytes) do
+  def jxl_decompress_impl(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
   def jxl_compress_impl(_pixels, _width, _height, _channels, _lossless) do
     exit(:nif_library_not_loaded)
+  end
+
+  defp to_struct({:ok, {pixels, width, height, channels}}) do
+    {:ok, %Imagex.Image{pixels: pixels, width: width, height: height, channels: channels}}
+  end
+
+  defp to_struct({:error, _error_msg} = output) do
+    output
+  end
+
+  def jpeg_decompress(bytes) do
+    to_struct(jpeg_decompress_impl(bytes))
+  end
+
+  def jpeg_compress(pixels, width, height, channels, options \\ []) do
+    quality = Keyword.get(options, :quality, 75)
+    jpeg_compress_impl(pixels, width, height, channels, quality)
+  end
+
+  def png_decompress(bytes) do
+    to_struct(png_decompress_impl(bytes))
+  end
+
+  def png_compress(pixels, width, height, channels) do
+    png_compress_impl(pixels, width, height, channels)
+  end
+
+  def jxl_decompress(bytes) do
+    to_struct(jxl_decompress_impl(bytes))
   end
 
   def jxl_compress(pixels, width, height, channels, options \\ []) do
@@ -68,9 +92,5 @@ defmodule Imagex do
         {:error, _reason} -> {:cont, acc}
       end
     end)
-  end
-
-  def rgb2gray(_pixels) do
-    exit(:nif_library_not_loaded)
   end
 end

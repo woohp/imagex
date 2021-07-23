@@ -436,28 +436,11 @@ jxl_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
 }
 
 
-binary rgb2gray(const binary& bytes)
-{
-    binary output(bytes.size / 3);
-    auto input_bytes = bytes.data;
-    auto output_bytes = output.data;
-
-    for (unsigned i = 0, j = 0; i < bytes.size; i += 3, j++)
-    {
-        output_bytes[j]
-            = static_cast<uint8_t>((input_bytes[i] * 299 + input_bytes[i + 1] * 587 + input_bytes[i + 2] * 114) / 1000);
-    }
-
-    return output;
-}
-
-
 MODULE(
     Elixir.Imagex,
-    def(jpeg_decompress, DirtyFlags::DirtyCpu),
+    def(jpeg_decompress, "jpeg_decompress_impl", DirtyFlags::DirtyCpu),
     def(jpeg_compress, "jpeg_compress_impl", DirtyFlags::DirtyCpu),
-    def(png_decompress, DirtyFlags::DirtyCpu),
-    def(png_compress, DirtyFlags::DirtyCpu),
-    def(jxl_decompress, DirtyFlags::DirtyCpu),
-    def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
-    def(rgb2gray, DirtyFlags::NotDirty), )
+    def(png_decompress, "png_decompress_impl", DirtyFlags::DirtyCpu),
+    def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
+    def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
+    def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu), )
