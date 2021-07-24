@@ -18,6 +18,10 @@ image.channels  # 3
 To load any image
 
 ```elixir
-{:ok, png_bytes} = File.read("test/lena.png")
-{:ok, %Imagex.Image{} = image} = Imagex.decode(png_bytes)
+{:ok, png_bytes} = File.read("lena.png")
+{:ok, {:png, %Imagex.Image{} = image}} = Imagex.decode(png_bytes)
+
+# or directly from a file
+
+{:ok, {:png, %Imagex.Image{} = image}} = Imagex.open("lena.png")
 ```

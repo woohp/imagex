@@ -122,11 +122,26 @@ defmodule Imagex do
       {:ppm, :ppm_decode}
     ]
 
-    Enum.reduce_while(methods, nil, fn {name, method}, acc ->
-      case apply(__MODULE__, method, [bytes]) do
-        {:ok, image} -> {:halt, {name, image}}
-        {:error, _reason} -> {:cont, acc}
-      end
-    end)
+    result =
+      Enum.reduce_while(methods, nil, fn {type, method}, acc ->
+        case apply(__MODULE__, method, [bytes]) do
+          {:ok, image} -> {:halt, {:ok, {type, image}}}
+          {:error, _reason} -> {:cont, acc}
+        end
+      end)
+
+    case result do
+      {:ok, _} = out -> out
+      nil -> {:error, "failed to decode"}
+    end
+  end
+
+  def open(path) do
+    with {:ok, file_content} <- File.read(path),
+         {:ok, _result} = out <- decode(file_content) do
+      out
+    else
+      error -> error
+    end
   end
 end

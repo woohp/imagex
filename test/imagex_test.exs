@@ -100,18 +100,23 @@ defmodule ImagexTest do
   end
 
   test "generic decode" do
-    {:jpeg, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.jpg"))
+    {:ok, {:jpeg, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:png, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.png"))
+    {:ok, {:png, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.png"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:jxl, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.jxl"))
+    {:ok, {:jxl, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.jxl"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:ppm, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
+    {:ok, {:ppm, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.ppm"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    assert Imagex.decode(<< 0, 1, 2 >>) == nil
+    assert Imagex.decode(<< 0, 1, 2 >>) == {:error, "failed to decode"}
+  end
+
+  test "open from path directly" do
+    {:ok, {:jpeg, %Image{} = image}} = Imagex.open("test/assets/lena.jpg")
+    assert {image.width, image.height, image.channels} == {512, 512, 3}
   end
 end
