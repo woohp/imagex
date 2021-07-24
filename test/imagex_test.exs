@@ -61,6 +61,33 @@ defmodule ImagexTest do
     assert byte_size(compressed_bytes) < byte_size(png_bytes)
   end
 
+  test "encode jpeg-xl lossless" do
+    png_bytes = File.read!("test/lena.png")
+    {:ok, image} = Imagex.png_decompress(png_bytes)
+
+    {:ok, compressed_bytes} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels)
+    {:ok, compressed_bytes_lossless} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels, lossless: true)
+    assert byte_size(compressed_bytes_lossless) > byte_size(compressed_bytes)
+
+    # we decompress the lossless compressed bytes, we should get back the exact same input
+    {:ok, roundtrip_image_lossless} = Imagex.jxl_decompress(compressed_bytes_lossless)
+    assert roundtrip_image_lossess == image
+  end
+
+  test "encode jpeg-xl with different distances" do
+    png_bytes = File.read!("test/lena.png")
+    {:ok, image} = Imagex.png_decompress(png_bytes)
+
+    compressed_sizes = for distance <- 0..15 do
+      {:ok, compressed_bytes} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels, lossless: false, distance: distance)
+      byte_size(compressed_bytes)
+    end
+
+    for [first_size, second_size] <- Enum.chunk_every(compressed_sizes, 2, 1, :discard) do
+      assert second_size < first_size
+    end
+  end
+
   test "generic decode" do
     jpeg_bytes = File.read!("test/lena.jpg")
     {:jpeg, %Image{} = image} = Imagex.decode(jpeg_bytes)

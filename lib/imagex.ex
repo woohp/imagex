@@ -75,15 +75,10 @@ defmodule Imagex do
     distance =
       case Keyword.get(options, :distance, 1.0) do
         value when 0 <= value and value <= 15 -> value
-      end
+      end + 0.0  # + 0.0 to convert any integer to float
 
-    lossless =
-      case Keyword.get(options, :lossless, 0) do
-        1 -> 1
-        0 -> 0
-        false -> 0
-        true -> 1
-      end
+    # the config variable must be boolean, but the impl expects an integer
+    lossless = Keyword.get(options, :lossless, false) && 1 || 0
 
     effort =
       case Keyword.get(options, :effort, 7) do
