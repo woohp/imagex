@@ -39,8 +39,19 @@ defmodule ImagexTest do
     assert String.starts_with?(error_reason, "invalid png header")
   end
 
-  test "decode png palette" do
+  test "decode png - palette" do
+    png_bytes = File.read!("test/assets/lena-palette.png")
+    {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
+    assert {image.width, image.height, image.channels} == {512, 512, 3}
+    assert byte_size(image.pixels) == 786_432
+  end
 
+  test "decode png - rgba" do
+    png_bytes = File.read!("test/assets/lena-rgba.png")
+    {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
+    assert {image.width, image.height, image.channels} == {512, 512, 4}
+    assert byte_size(image.pixels) == 1_048_576
+    assert String.at(image.pixels, 3) == <<191>>  # the alpha channel was set to 75% (or 0.75 * 255)
   end
 
   test "encode image to png", %{image: test_image} do

@@ -184,11 +184,11 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
 
     switch (color_type)
     {
-    case PNG_COLOR_TYPE_PALETTE:
+    case PNG_COLOR_TYPE_PALETTE:  // convert palette to RGB
         png_set_palette_to_rgb(png_ptr);
         channels = 3;
         break;
-    case PNG_COLOR_TYPE_GRAY:
+    case PNG_COLOR_TYPE_GRAY:  // expand 1, 2, or 4 bit grayscale to 8 bit grayscale
         if (bit_depth < 8)
             png_set_expand_gray_1_2_4_to_8(png_ptr);
         bit_depth = 8;
