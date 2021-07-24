@@ -5,12 +5,12 @@ defmodule ImagexTest do
   alias Imagex.Image
 
   setup do
-    {:ok, image} = Imagex.ppm_decode(File.read!("test/lena.ppm"))
+    {:ok, image} = Imagex.ppm_decode(File.read!("test/assets/lena.ppm"))
     {:ok, image: image}
   end
 
   test "decode jpeg image" do
-    jpeg_bytes = File.read!("test/lena.jpg")
+    jpeg_bytes = File.read!("test/assets/lena.jpg")
     {:ok, %Image{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
     assert {image.width, image.height, image.channels} == {512, 512, 3}
     assert byte_size(image.pixels) == 786_432
@@ -27,7 +27,7 @@ defmodule ImagexTest do
   end
 
   test "decode png image", %{image: test_image} do
-    png_bytes = File.read!("test/lena.png")
+    png_bytes = File.read!("test/assets/lena.png")
     {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
     assert {image.width, image.height, image.channels} == {512, 512, 3}
     assert byte_size(image.pixels) == 786_432
@@ -53,14 +53,14 @@ defmodule ImagexTest do
   end
 
   test "decode jpeg-xl image" do
-    jxl_bytes = File.read!("test/lena.jxl")
+    jxl_bytes = File.read!("test/assets/lena.jxl")
     {:ok, %Image{} = image} = Imagex.jxl_decompress(jxl_bytes)
     assert {image.width, image.height, image.channels} == {512, 512, 3}
     assert byte_size(image.pixels) == 786_432
   end
 
   test "encode image to jpeg-xl" do
-    png_bytes = File.read!("test/lena.png")
+    png_bytes = File.read!("test/assets/lena.png")
     {:ok, image} = Imagex.png_decompress(png_bytes)
 
     {:ok, compressed_bytes} = Imagex.jxl_compress(image)
@@ -89,7 +89,7 @@ defmodule ImagexTest do
   end
 
   test "decode ppm" do
-    ppm_bytes = File.read!("test/lena.ppm")
+    ppm_bytes = File.read!("test/assets/lena.ppm")
     {:ok, image} = Imagex.ppm_decode(ppm_bytes)
     assert {image.width, image.height, image.channels} == {512, 512, 3}
     assert byte_size(image.pixels) == 786_432
@@ -100,16 +100,16 @@ defmodule ImagexTest do
   end
 
   test "generic decode" do
-    {:jpeg, %Image{} = image} = Imagex.decode(File.read!("test/lena.jpg"))
+    {:jpeg, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.jpg"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:png, %Image{} = image} = Imagex.decode(File.read!("test/lena.png"))
+    {:png, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.png"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:jxl, %Image{} = image} = Imagex.decode(File.read!("test/lena.jxl"))
+    {:jxl, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.jxl"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
-    {:ppm, %Image{} = image} = Imagex.decode(File.read!("test/lena.ppm"))
+    {:ppm, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
     assert {image.width, image.height, image.channels} == {512, 512, 3}
 
     assert Imagex.decode(<< 0, 1, 2 >>) == nil
