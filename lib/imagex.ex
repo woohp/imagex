@@ -7,6 +7,8 @@ defmodule Imagex do
 
   app = Mix.Project.config()[:app]
 
+  alias Imagex.Image
+
   def init do
     base_path =
       case :code.priv_dir(unquote(app)) do
@@ -43,7 +45,7 @@ defmodule Imagex do
   end
 
   defp to_struct({:ok, {pixels, width, height, channels}}) do
-    {:ok, %Imagex.Image{pixels: pixels, width: width, height: height, channels: channels}}
+    {:ok, %Image{pixels: pixels, width: width, height: height, channels: channels}}
   end
 
   defp to_struct({:error, _error_msg} = output) do
@@ -54,24 +56,24 @@ defmodule Imagex do
     to_struct(jpeg_decompress_impl(bytes))
   end
 
-  def jpeg_compress(pixels, width, height, channels, options \\ []) do
+  def jpeg_compress(image = %Image{}, options \\ []) do
     quality = Keyword.get(options, :quality, 75)
-    jpeg_compress_impl(pixels, width, height, channels, quality)
+    jpeg_compress_impl(image.pixels, image.width, image.height, image.channels, quality)
   end
 
   def png_decompress(bytes) do
     to_struct(png_decompress_impl(bytes))
   end
 
-  def png_compress(pixels, width, height, channels) do
-    png_compress_impl(pixels, width, height, channels)
+  def png_compress(image = %Image{}) do
+    png_compress_impl(image.pixels, image.width, image.height, image.channels)
   end
 
   def jxl_decompress(bytes) do
     to_struct(jxl_decompress_impl(bytes))
   end
 
-  def jxl_compress(pixels, width, height, channels, options \\ []) do
+  def jxl_compress(image = %Image{}, options \\ []) do
     distance =
       case Keyword.get(options, :distance, 1.0) do
         value when 0 <= value and value <= 15 -> value
@@ -92,7 +94,7 @@ defmodule Imagex do
         :tortoise -> 9
       end
 
-    jxl_compress_impl(pixels, width, height, channels, distance, lossless, effort)
+    jxl_compress_impl(image.pixels, image.width, image.height, image.channels, distance, lossless, effort)
   end
 
   def decode(bytes) do

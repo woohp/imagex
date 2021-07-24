@@ -19,7 +19,7 @@ defmodule ImagexTest do
   test "encode image to jpeg" do
     jpeg_bytes = File.read!("test/lena.jpg")
     {:ok, image} = Imagex.jpeg_decompress(jpeg_bytes)
-    {:ok, compressed_bytes} = Imagex.jpeg_compress(image.pixels, image.width, image.height, image.channels)
+    {:ok, compressed_bytes} = Imagex.jpeg_compress(image)
     assert byte_size(compressed_bytes) < image.width * image.height * image.channels
   end
 
@@ -38,7 +38,7 @@ defmodule ImagexTest do
   test "encode image to png" do
     png_bytes = File.read!("test/lena.png")
     {:ok, image} = Imagex.png_decompress(png_bytes)
-    {:ok, compressed_bytes} = Imagex.png_compress(image.pixels, image.width, image.height, image.channels)
+    {:ok, compressed_bytes} = Imagex.png_compress(image)
     assert byte_size(compressed_bytes) < image.width * image.height * image.channels
 
     # if we decompress again, we should get back the original pixels
@@ -57,7 +57,7 @@ defmodule ImagexTest do
     png_bytes = File.read!("test/lena.png")
     {:ok, image} = Imagex.png_decompress(png_bytes)
 
-    {:ok, compressed_bytes} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels)
+    {:ok, compressed_bytes} = Imagex.jxl_compress(image)
     assert byte_size(compressed_bytes) < byte_size(png_bytes)
   end
 
@@ -65,13 +65,13 @@ defmodule ImagexTest do
     png_bytes = File.read!("test/lena.png")
     {:ok, image} = Imagex.png_decompress(png_bytes)
 
-    {:ok, compressed_bytes} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels)
-    {:ok, compressed_bytes_lossless} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels, lossless: true)
+    {:ok, compressed_bytes} = Imagex.jxl_compress(image)
+    {:ok, compressed_bytes_lossless} = Imagex.jxl_compress(image, lossless: true)
     assert byte_size(compressed_bytes_lossless) > byte_size(compressed_bytes)
 
     # we decompress the lossless compressed bytes, we should get back the exact same input
     {:ok, roundtrip_image_lossless} = Imagex.jxl_decompress(compressed_bytes_lossless)
-    assert roundtrip_image_lossess == image
+    assert roundtrip_image_lossless == image
   end
 
   test "encode jpeg-xl with different distances" do
@@ -79,7 +79,7 @@ defmodule ImagexTest do
     {:ok, image} = Imagex.png_decompress(png_bytes)
 
     compressed_sizes = for distance <- 0..15 do
-      {:ok, compressed_bytes} = Imagex.jxl_compress(image.pixels, image.width, image.height, image.channels, lossless: false, distance: distance)
+      {:ok, compressed_bytes} = Imagex.jxl_compress(image, lossless: false, distance: distance)
       byte_size(compressed_bytes)
     end
 
