@@ -74,13 +74,14 @@ defmodule Imagex do
   end
 
   def jxl_compress(image = %Image{}, options \\ []) do
+    # + 0.0 to convert any integer to float
     distance =
       case Keyword.get(options, :distance, 1.0) do
         value when 0 <= value and value <= 15 -> value
-      end + 0.0  # + 0.0 to convert any integer to float
+      end + 0.0
 
     # the config variable must be boolean, but the impl expects an integer
-    lossless = Keyword.get(options, :lossless, false) && 1 || 0
+    lossless = (Keyword.get(options, :lossless, false) && 1) || 0
 
     effort =
       case Keyword.get(options, :effort, 7) do
@@ -94,11 +95,32 @@ defmodule Imagex do
         :tortoise -> 9
       end
 
-    jxl_compress_impl(image.pixels, image.width, image.height, image.channels, distance, lossless, effort)
+    jxl_compress_impl(
+      image.pixels,
+      image.width,
+      image.height,
+      image.channels,
+      distance,
+      lossless,
+      effort
+    )
+  end
+
+  def ppm_decode(bytes) do
+    Imagex.PPM.decode(bytes)
+  end
+
+  def ppm_encode(image) do
+    Imagex.PPM.encode(image)
   end
 
   def decode(bytes) do
-    methods = [{:jpeg, :jpeg_decompress}, {:png, :png_decompress}, {:jxl, :jxl_decompress}]
+    methods = [
+      {:jpeg, :jpeg_decompress},
+      {:png, :png_decompress},
+      {:jxl, :jxl_decompress},
+      {:ppm, :ppm_decode}
+    ]
 
     Enum.reduce_while(methods, nil, fn {name, method}, acc ->
       case apply(__MODULE__, method, [bytes]) do
