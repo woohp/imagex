@@ -31,7 +31,20 @@ void jpeg_error_exit(j_common_ptr cinfo)
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(const binary& jpeg_bytes) noexcept
+erl_result<
+    tuple<
+        binary,
+        uint32_t,
+        uint32_t,
+        uint32_t,
+        tuple<
+            int,  // saw_JFIF_marker
+            tuple<int, int>,  // jfif_version
+            int,  // jfif_unit
+            tuple<int, int>  // jfif_density
+            >>,
+    string>
+jpeg_decompress(const binary& jpeg_bytes) noexcept
 {
     struct my_jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
@@ -72,8 +85,16 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
     /* clean up */
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
-    return Ok(
-        make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
+    return Ok(make_tuple(
+        move(output),
+        cinfo.output_width,
+        cinfo.output_height,
+        static_cast<uint32_t>(cinfo.num_components),
+        make_tuple(
+            cinfo.saw_JFIF_marker,
+            tuple<int, int>(cinfo.JFIF_major_version, cinfo.JFIF_minor_version),
+            static_cast<int>(cinfo.density_unit),
+            tuple<int, int>(cinfo.X_density, cinfo.Y_density))));
 }
 
 
@@ -145,7 +166,8 @@ struct png_read_binary
 };
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(const binary& png_bytes) noexcept
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t, tuple<tuple<int, int>>>, string>
+png_decompress(const binary& png_bytes) noexcept
 {
     // check png signature
     if (png_sig_cmp(png_bytes.data, 0, 8))
@@ -203,9 +225,12 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
 
     png_read_image(png_ptr, row_pointers.get());
 
+    const auto dpix = png_get_x_pixels_per_inch(png_ptr, info_ptr);
+    const auto dpiy = png_get_y_pixels_per_inch(png_ptr, info_ptr);
+
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
-    return Ok(make_tuple(std::move(output), width, height, channels));
+    return Ok(make_tuple(std::move(output), width, height, channels, make_tuple(tuple<int, int> { dpix, dpiy })));
 }
 
 

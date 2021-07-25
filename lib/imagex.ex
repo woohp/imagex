@@ -48,12 +48,33 @@ defmodule Imagex do
     {:ok, %Image{pixels: pixels, width: width, height: height, channels: channels}}
   end
 
+  defp to_struct({:ok, {pixels, width, height, channels, auxiliary}}) do
+    {:ok, %Image{pixels: pixels, width: width, height: height, channels: channels}, auxiliary}
+  end
+
   defp to_struct({:error, _error_msg} = output) do
     output
   end
 
   def jpeg_decompress(bytes) do
-    to_struct(jpeg_decompress_impl(bytes))
+    with {:ok, image, auxiliary} <- to_struct(jpeg_decompress_impl(bytes)) do
+      {saw_JFIF_marker, jfif_version, jfif_unit, jfif_density} = auxiliary
+
+      info =
+        if saw_JFIF_marker == 1 do
+          %{
+            jfif_version: jfif_version,
+            jfif_unit: jfif_unit,
+            jfif_density: jfif_density
+          }
+        else
+          nil
+        end
+
+      {:ok, %Image{image | info: info}}
+    else
+      {:error, _} = output -> output
+    end
   end
 
   def jpeg_compress(image = %Image{}, options \\ []) do
@@ -62,7 +83,14 @@ defmodule Imagex do
   end
 
   def png_decompress(bytes) do
-    to_struct(png_decompress_impl(bytes))
+    with {:ok, image, auxiliary} <- to_struct(png_decompress_impl(bytes)) do
+      {dpi} = auxiliary
+
+      info = %{dpi: dpi}
+      {:ok, %Image{image | info: info}}
+    else
+      {:error, _} = output -> output
+    end
   end
 
   def png_compress(image = %Image{}) do

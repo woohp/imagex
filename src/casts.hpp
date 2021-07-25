@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <erl_nif.h>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -334,4 +335,37 @@ public:
         else
             return enif_make_tuple2(env, error_atom_term, type_cast<ErrorType>::handle(env, std::get<1>(result)));
     };
+};
+
+
+template <typename T>
+struct type_cast<std::optional<T>>
+{
+    static std::optional<T> load(ErlNifEnv* env, ERL_NIF_TERM term)
+    {
+        if (enif_is_atom(env, term))
+        {
+            char buf[5];
+            if (enif_get_atom(env, term, buf, 5, ERL_NIF_LATIN1) != 4)
+                throw std::invalid_argument("not nil");
+            if (buf[0] != 'n' || buf[1] != 'i' || buf[2] != 'l')
+                throw std::invalid_argument("not nil");
+            return std::nullopt;
+        }
+        else
+        {
+            return type_cast<T>::load(env, term);
+        }
+    }
+
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::optional<T>& item) noexcept
+    {
+        if (item)
+            return type_cast<T>::handle(env, *item);
+        else
+        {
+            static ERL_NIF_TERM nil_atom_term = type_cast<atom>::handle(env, "nil"_atom);
+            return nil_atom_term;
+        }
+    }
 };
