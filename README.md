@@ -1,23 +1,41 @@
 # Imagex
 
-Provides NIF wrappers for loading and saving common images (jpeg, png, and jpeg-xl for now).
+Provides NIF wrappers for loading and saving common images (jpeg, png, jpeg-xl, and ppm for now).
 
 ## Usage
 
-To load a jpeg image
+To load an image file (as an Nx.Tensor)
 
 ```elixir
-{:ok, jpeg_bytes} = File.read("test/lena.jpg")
-{:ok, %Nx.Tensor{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
+{:ok, %Nx.Tensor{} = image} = Imagex.open("lena.jpg")
 ```
 
-To load any image
+or load from memory
 
 ```elixir
-{:ok, png_bytes} = File.read("lena.png")
-{:ok, {:png, %Nx.Tensor{} = image}} = Imagex.decode(png_bytes)
+bytes = File.read!("test/lena.jpg")
+{:ok, image} = Imagex.decode(bytes)
+```
 
-# or directly from a file
+Decode as a specific format
 
-{:ok, {:png, %Nx.Tensor{} = image}} = Imagex.open("lena.png")
+```elixir
+bytes = File.read!("lena.png")
+{:ok, image} = Imagex.decode(bytes, format: :png)
+
+# or explicitly try multiple formats
+{:ok, image} = Imagex.decode(bytes, format: [:png, :ppm])
+```
+
+Save an image as a file
+
+```elixir
+image = Nx.tensor(...)
+Imagex.save(image, "foo.png")  # the format is inferred from the file extension
+```
+
+or save to memory
+
+```elixir
+compressed = Imagex.encode(image, :jpeg)
 ```
