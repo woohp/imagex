@@ -59,10 +59,6 @@ defmodule Imagex do
   defp standardize_shape({h, w}), do: {h, w, 1}
   defp standardize_shape({_h, _w, _c} = shape), do: shape
 
-  def jpeg_decompress(bytes) do
-    to_tensor(jpeg_decompress_impl(bytes))
-  end
-
   def jpeg_compress(image = %Nx.Tensor{}, options \\ []) do
     quality = Keyword.get(options, :quality, 75)
     pixels = Nx.to_binary(image)
@@ -70,18 +66,10 @@ defmodule Imagex do
     jpeg_compress_impl(pixels, w, h, c, quality)
   end
 
-  def png_decompress(bytes) do
-    to_tensor(png_decompress_impl(bytes))
-  end
-
   def png_compress(image = %Nx.Tensor{}, _options \\ []) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
     png_compress_impl(pixels, w, h, c)
-  end
-
-  def jxl_decompress(bytes) do
-    to_tensor(jxl_decompress_impl(bytes))
   end
 
   def jxl_compress(image = %Nx.Tensor{}, options \\ []) do
@@ -120,34 +108,27 @@ defmodule Imagex do
     )
   end
 
-  def ppm_decode(bytes) do
-    Imagex.PPM.decode(bytes)
-  end
-
   def ppm_encode(image) do
     Imagex.PPM.encode(image)
   end
 
-  def decode(bytes) do
-    methods = [
-      {:jpeg, :jpeg_decompress},
-      {:png, :png_decompress},
-      {:jxl, :jxl_decompress},
-      {:ppm, :ppm_decode}
-    ]
+  defp decode_impl(_bytes, []), do: {:error, "failed to decode"}
 
-    result =
-      Enum.reduce_while(methods, nil, fn {type, method}, acc ->
-        case apply(__MODULE__, method, [bytes]) do
-          {:ok, image} -> {:halt, {:ok, {type, image}}}
-          {:error, _reason} -> {:cont, acc}
-        end
-      end)
-
-    case result do
-      {:ok, _} = out -> out
-      nil -> {:error, "failed to decode"}
+  defp decode_impl(bytes, [format | rest]) do
+    case decode(bytes, format) do
+      {:ok, image} -> {:ok, image}
+      {:error, _error_msg} -> decode_impl(bytes, rest)
     end
+  end
+
+  def decode(bytes, [format: :jpeg]), do: to_tensor(jpeg_decompress_impl(bytes))
+  def decode(bytes, [format: :png]), do: to_tensor(png_decompress_impl(bytes))
+  def decode(bytes, [format: :jxl]), do: to_tensor(jxl_decompress_impl(bytes))
+  def decode(bytes, [format: :ppm]), do: Imagex.PPM.decode(bytes)
+
+  def decode(bytes, options \\ []) do
+    methods = Keyword.get(options, :formats, [:jpeg, :png, :jxl, :ppm])
+    decode_impl(bytes, methods)
   end
 
   def open(path) do
