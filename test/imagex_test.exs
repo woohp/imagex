@@ -140,4 +140,14 @@ defmodule ImagexTest do
     {:ok, {:jpeg, %Image{} = image}} = Imagex.open("test/assets/lena.jpg")
     assert get_shape(image) == {512, 512, 3}
   end
+
+  test "convert image to and from nx tensor", %{image: test_image} do
+    tensor = Imagex.to_nx_tensor(test_image)
+    assert %Nx.Tensor{} = tensor
+    assert tensor.shape == {512, 512, 3}
+    assert tensor.type == {:u, 8}
+
+    new_image = Imagex.from_nx_tensor(tensor)
+    assert new_image == test_image
+  end
 end

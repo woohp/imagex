@@ -172,4 +172,24 @@ defmodule Imagex do
       error -> error
     end
   end
+
+  def to_nx_tensor(%Image{pixels: pixels, height: h, width: w, channels: c}) do
+    Nx.from_binary(pixels, {:u, 8})
+    |> Nx.reshape({h, w, c})
+  end
+
+  def from_nx_tensor(%Nx.Tensor{} = tensor) do
+    {h, w, c} =
+      case tensor.shape do
+        {h, w} -> {h, w, 1}
+        {_h, _w, _c} = shape -> shape
+      end
+
+    %Image{
+      pixels: Nx.to_binary(tensor),
+      width: w,
+      height: h,
+      channels: c
+    }
+  end
 end
