@@ -8,20 +8,16 @@ To load a jpeg image
 
 ```elixir
 {:ok, jpeg_bytes} = File.read("test/lena.jpg")
-{:ok, %Imagex.Image{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
-image.pixels  # bytes containing pixels
-image.width  # 512
-image.height  # 512
-image.channels  # 3
+{:ok, %Nx.Tensor{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
 ```
 
 To load any image
 
 ```elixir
 {:ok, png_bytes} = File.read("lena.png")
-{:ok, {:png, %Imagex.Image{} = image}} = Imagex.decode(png_bytes)
+{:ok, {:png, %Nx.Tensor{} = image}} = Imagex.decode(png_bytes)
 
 # or directly from a file
 
-{:ok, {:png, %Imagex.Image{} = image}} = Imagex.open("lena.png")
+{:ok, {:png, %Nx.Tensor{} = image}} = Imagex.open("lena.png")
 ```

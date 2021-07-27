@@ -7,8 +7,6 @@ defmodule Imagex do
 
   app = Mix.Project.config()[:app]
 
-  alias Imagex.Image
-
   def init do
     base_path =
       case :code.priv_dir(unquote(app)) do
@@ -44,64 +42,49 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
-  defp to_struct({:ok, {pixels, width, height, channels}}) do
-    {:ok, %Image{pixels: pixels, width: width, height: height, channels: channels}}
+  defp to_tensor({:ok, {pixels, width, height, channels}}) do
+    shape = if channels == 1, do: {height, width}, else: {height, width, channels}
+    {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
   end
 
-  defp to_struct({:ok, {pixels, width, height, channels, auxiliary}}) do
-    {:ok, %Image{pixels: pixels, width: width, height: height, channels: channels}, auxiliary}
+  defp to_tensor({:ok, {pixels, width, height, channels, _auxiliary}}) do
+    {:ok, tensor} = to_tensor({:ok, {pixels, width, height, channels}})
+    {:ok, tensor}
   end
 
-  defp to_struct({:error, _error_msg} = output) do
+  defp to_tensor({:error, _error_msg} = output) do
     output
   end
 
+  defp standardize_shape({h, w}), do: {h, w, 1}
+  defp standardize_shape({_h, _w, _c} = shape), do: shape
+
   def jpeg_decompress(bytes) do
-    with {:ok, image, auxiliary} <- to_struct(jpeg_decompress_impl(bytes)) do
-      {saw_JFIF_marker, jfif_version, jfif_unit, jfif_density} = auxiliary
-
-      info =
-        if saw_JFIF_marker == 1 do
-          %{
-            jfif_version: jfif_version,
-            jfif_unit: jfif_unit,
-            jfif_density: jfif_density
-          }
-        else
-          nil
-        end
-
-      {:ok, %Image{image | info: info}}
-    else
-      {:error, _} = output -> output
-    end
+    to_tensor(jpeg_decompress_impl(bytes))
   end
 
-  def jpeg_compress(image = %Image{}, options \\ []) do
+  def jpeg_compress(image = %Nx.Tensor{}, options \\ []) do
     quality = Keyword.get(options, :quality, 75)
-    jpeg_compress_impl(image.pixels, image.width, image.height, image.channels, quality)
+    pixels = Nx.to_binary(image)
+    {h, w, c} = standardize_shape(image.shape)
+    jpeg_compress_impl(pixels, w, h, c, quality)
   end
 
   def png_decompress(bytes) do
-    with {:ok, image, auxiliary} <- to_struct(png_decompress_impl(bytes)) do
-      {dpi} = auxiliary
-
-      info = %{dpi: dpi}
-      {:ok, %Image{image | info: info}}
-    else
-      {:error, _} = output -> output
-    end
+    to_tensor(png_decompress_impl(bytes))
   end
 
-  def png_compress(image = %Image{}) do
-    png_compress_impl(image.pixels, image.width, image.height, image.channels)
+  def png_compress(image = %Nx.Tensor{}, _options \\ []) do
+    pixels = Nx.to_binary(image)
+    {h, w, c} = standardize_shape(image.shape)
+    png_compress_impl(pixels, w, h, c)
   end
 
   def jxl_decompress(bytes) do
-    to_struct(jxl_decompress_impl(bytes))
+    to_tensor(jxl_decompress_impl(bytes))
   end
 
-  def jxl_compress(image = %Image{}, options \\ []) do
+  def jxl_compress(image = %Nx.Tensor{}, options \\ []) do
     # + 0.0 to convert any integer to float
     distance =
       case Keyword.get(options, :distance, 1.0) do
@@ -123,11 +106,14 @@ defmodule Imagex do
         :tortoise -> 9
       end
 
+    pixels = Nx.to_binary(image)
+    {h, w, c} = standardize_shape(image.shape)
+
     jxl_compress_impl(
-      image.pixels,
-      image.width,
-      image.height,
-      image.channels,
+      pixels,
+      w,
+      h,
+      c,
       distance,
       lossless,
       effort
@@ -171,25 +157,5 @@ defmodule Imagex do
     else
       error -> error
     end
-  end
-
-  def to_nx_tensor(%Image{pixels: pixels, height: h, width: w, channels: c}) do
-    Nx.from_binary(pixels, {:u, 8})
-    |> Nx.reshape({h, w, c})
-  end
-
-  def from_nx_tensor(%Nx.Tensor{} = tensor) do
-    {h, w, c} =
-      case tensor.shape do
-        {h, w} -> {h, w, 1}
-        {_h, _w, _c} = shape -> shape
-      end
-
-    %Image{
-      pixels: Nx.to_binary(tensor),
-      width: w,
-      height: h,
-      channels: c
-    }
   end
 end

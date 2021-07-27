@@ -2,25 +2,18 @@ defmodule ImagexTest do
   use ExUnit.Case
   doctest Imagex
 
-  alias Imagex.Image
+  alias Nx.Tensor
 
   setup do
     {:ok, image} = Imagex.ppm_decode(File.read!("test/assets/lena.ppm"))
     {:ok, image: image}
   end
 
-  defp get_shape(image) do
-    {image.height, image.width, image.channels}
-  end
-
   test "decode jpeg image" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
-    {:ok, %Image{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
-    assert get_shape(image) == {512, 512, 3}
-    assert byte_size(image.pixels) == 786_432
-
-    # make sure the info field is has the right data
-    assert %{jfif_version: {1, 1}, jfif_unit: 0, jfif_density: {72, 72}} = image.info
+    {:ok, %Tensor{} = image} = Imagex.jpeg_decompress(jpeg_bytes)
+    assert image.type == {:u, 8}
+    assert image.shape == {512, 512, 3}
   end
 
   test "decode jpeg image raises exception for bad stuff" do
@@ -30,17 +23,16 @@ defmodule ImagexTest do
 
   test "encode image to jpeg", %{image: test_image} do
     {:ok, compressed_bytes} = Imagex.jpeg_compress(test_image)
-    assert byte_size(compressed_bytes) < test_image.width * test_image.height * test_image.channels
+    assert byte_size(compressed_bytes) < Nx.size(test_image)
   end
 
   test "decode png image", %{image: test_image} do
     png_bytes = File.read!("test/assets/lena.png")
-    {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
-    assert get_shape(image) == {512, 512, 3}
-    assert byte_size(image.pixels) == 786_432
-    assert %{dpi: {72, 72}} = image.info
-    assert image.pixels == test_image.pixels  # should it be the same as our test PPM image
-    assert get_shape(image) == get_shape(test_image)
+    {:ok, %Tensor{} = image} = Imagex.png_decompress(png_bytes)
+    assert image.shape== {512, 512, 3}
+
+    assert Nx.to_binary(image) == Nx.to_binary(test_image)  # should it be the same as our test PPM image
+    assert image.shape == test_image.shape
   end
 
   test "decode png image raises exception for bad stuff" do
@@ -50,34 +42,31 @@ defmodule ImagexTest do
 
   test "decode png - palette" do
     png_bytes = File.read!("test/assets/lena-palette.png")
-    {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
-    assert get_shape(image) == {512, 512, 3}
-    assert byte_size(image.pixels) == 786_432
+    {:ok, %Tensor{} = image} = Imagex.png_decompress(png_bytes)
+    assert image.shape == {512, 512, 3}
   end
 
   test "decode png - rgba" do
     png_bytes = File.read!("test/assets/lena-rgba.png")
-    {:ok, %Image{} = image} = Imagex.png_decompress(png_bytes)
-    assert get_shape(image) == {512, 512, 4}
-    assert byte_size(image.pixels) == 1_048_576
-    assert String.at(image.pixels, 3) == <<191>>  # the alpha channel was set to 75% (or 0.75 * 255)
+    {:ok, %Tensor{} = image} = Imagex.png_decompress(png_bytes)
+    assert image.shape == {512, 512, 4}
+    assert String.at(Nx.to_binary(image), 3) == <<191>>  # the alpha channel was set to 75% (or 0.75 * 255)
   end
 
   test "encode image to png", %{image: test_image} do
     {:ok, compressed_bytes} = Imagex.png_compress(test_image)
-    assert byte_size(compressed_bytes) < test_image.width * test_image.height * test_image.channels
+    assert byte_size(compressed_bytes) < Nx.size(test_image)
 
     # if we decompress again, we should get back the original pixels
     {:ok, image} = Imagex.png_decompress(compressed_bytes)
-    assert image.pixels == test_image.pixels  # should it be the same as our test PPM image
-    assert get_shape(image) == get_shape(test_image)
+    assert Nx.to_binary(image) == Nx.to_binary(test_image)  # should it be the same as our test PPM image
+    assert image.shape == test_image.shape
   end
 
   test "decode jpeg-xl image" do
     jxl_bytes = File.read!("test/assets/lena.jxl")
-    {:ok, %Image{} = image} = Imagex.jxl_decompress(jxl_bytes)
-    assert get_shape(image) == {512, 512, 3}
-    assert byte_size(image.pixels) == 786_432
+    {:ok, %Tensor{} = image} = Imagex.jxl_decompress(jxl_bytes)
+    assert image.shape == {512, 512, 3}
   end
 
   test "encode image to jpeg-xl" do
@@ -112,8 +101,7 @@ defmodule ImagexTest do
   test "decode ppm" do
     ppm_bytes = File.read!("test/assets/lena.ppm")
     {:ok, image} = Imagex.ppm_decode(ppm_bytes)
-    assert get_shape(image) == {512, 512, 3}
-    assert byte_size(image.pixels) == 786_432
+    assert image.shape == {512, 512, 3}
   end
 
   test "encode ppm", %{image: test_image} do
@@ -121,33 +109,23 @@ defmodule ImagexTest do
   end
 
   test "generic decode" do
-    {:ok, {:jpeg, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
-    assert get_shape(image) == {512, 512, 3}
+    {:ok, {:jpeg, %Tensor{} = image}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
+    assert image.shape == {512, 512, 3}
 
-    {:ok, {:png, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.png"))
-    assert get_shape(image) == {512, 512, 3}
+    {:ok, {:png, %Tensor{} = image}} = Imagex.decode(File.read!("test/assets/lena.png"))
+    assert image.shape == {512, 512, 3}
 
-    {:ok, {:jxl, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.jxl"))
-    assert get_shape(image) == {512, 512, 3}
+    {:ok, {:jxl, %Tensor{} = image}} = Imagex.decode(File.read!("test/assets/lena.jxl"))
+    assert image.shape == {512, 512, 3}
 
-    {:ok, {:ppm, %Image{} = image}} = Imagex.decode(File.read!("test/assets/lena.ppm"))
-    assert get_shape(image) == {512, 512, 3}
+    {:ok, {:ppm, %Tensor{} = image}} = Imagex.decode(File.read!("test/assets/lena.ppm"))
+    assert image.shape == {512, 512, 3}
 
     assert Imagex.decode(<< 0, 1, 2 >>) == {:error, "failed to decode"}
   end
 
   test "open from path directly" do
-    {:ok, {:jpeg, %Image{} = image}} = Imagex.open("test/assets/lena.jpg")
-    assert get_shape(image) == {512, 512, 3}
-  end
-
-  test "convert image to and from nx tensor", %{image: test_image} do
-    tensor = Imagex.to_nx_tensor(test_image)
-    assert %Nx.Tensor{} = tensor
-    assert tensor.shape == {512, 512, 3}
-    assert tensor.type == {:u, 8}
-
-    new_image = Imagex.from_nx_tensor(tensor)
-    assert new_image == test_image
+    {:ok, {:jpeg, %Tensor{} = image}} = Imagex.open("test/assets/lena.jpg")
+    assert image.shape == {512, 512, 3}
   end
 end
