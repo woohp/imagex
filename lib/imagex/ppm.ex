@@ -1,10 +1,10 @@
 defmodule Imagex.PPM do
-  def encode(image = %Nx.Tensor{shape: {height, width}}) do
+  def encode(%Nx.Tensor{shape: {height, width}} = image) do
     pixels = Nx.to_binary(image)
     <<"P5\n#{width} #{height}\n255\n", pixels::binary>>
   end
 
-  def encode(image = %Nx.Tensor{shape: {height, width, 3}}) do
+  def encode(%Nx.Tensor{shape: {height, width, 3}} = image) do
     pixels = Nx.to_binary(image)
     <<"P6\n#{width} #{height}\n255\n", pixels::binary>>
   end

@@ -108,6 +108,24 @@ defmodule ImagexTest do
     assert Imagex.encode(test_image, :ppm) == File.read!("test/assets/lena.ppm")
   end
 
+  test "decode bmp rgb pos height", %{image: test_image} do
+    bmp_bytes = File.read!("test/assets/lena-rgb-pos-height.bmp")
+    {:ok, image} = Imagex.decode(bmp_bytes, format: :bmp)
+    assert image.shape == {512, 512, 3}
+    assert Nx.to_binary(image) == Nx.to_binary(test_image)
+  end
+
+  test "decode bmp rgba neg height", %{image: test_image} do
+    bmp_bytes = File.read!("test/assets/lena-rgba-neg-height.bmp")
+    {:ok, image} = Imagex.decode(bmp_bytes, format: :bmp)
+    assert image.shape == {512, 512, 4}
+
+    # get the rgb portion only, which should then equal the test_image
+    {h, w, 3} = test_image.shape
+    rgb_only_image = Nx.slice(image, [0, 0, 0], [h, w, 3])
+    assert Nx.to_binary(rgb_only_image) == Nx.to_binary(test_image)
+  end
+
   test "generic decode" do
     {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.jpg"))
     assert image.shape == {512, 512, 3}

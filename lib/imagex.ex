@@ -114,6 +114,10 @@ defmodule Imagex do
     Imagex.PPM.encode(image)
   end
 
+  def encode(image = %Nx.Tensor{}, :bmp, _options) do
+    Imagex.BMP.encode(image)
+  end
+
   defp decode_multi(_bytes, []), do: {:error, "failed to decode"}
 
   defp decode_multi(bytes, [format | rest]) do
@@ -124,11 +128,12 @@ defmodule Imagex do
   end
 
   def decode(bytes, options \\ []) do
-    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm]) do
+    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp]) do
       :jpeg -> to_tensor(jpeg_decompress_impl(bytes))
       :png -> to_tensor(png_decompress_impl(bytes))
       :jxl -> to_tensor(jxl_decompress_impl(bytes))
       :ppm -> Imagex.PPM.decode(bytes)
+      :bmp -> Imagex.BMP.decode(bytes)
       formats when is_list(formats) -> decode_multi(bytes, formats)
     end
   end
@@ -148,6 +153,7 @@ defmodule Imagex do
   defp ext_to_format(".jxl"), do: :jxl
   defp ext_to_format(".pgm"), do: :ppm
   defp ext_to_format(".ppm"), do: :ppm
+  defp ext_to_format(".bmp"), do: :bmp
 
   def save(%Nx.Tensor{} = image, path, options \\ []) when is_binary(path) do
     format = ext_to_format(String.downcase(Path.extname(path)))
