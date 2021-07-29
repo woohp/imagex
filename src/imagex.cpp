@@ -344,7 +344,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 }
 
 
-erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(const binary& jxl_bytes)
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
     auto runner = JxlThreadParallelRunnerMake(nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
@@ -358,7 +358,7 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
 
     JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
 
-    vector<uint8_t> pixels;
+    binary pixels;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t channels = 0;
@@ -401,14 +401,14 @@ erl_result<tuple<vector<uint8_t>, uint32_t, uint32_t, uint32_t>, string> jxl_dec
         {
             size_t buffer_size;
             JXL_ENSURE_SUCCESS(JxlDecoderImageOutBufferSize, dec.get(), &format, &buffer_size);
-            if (buffer_size != width * height * 3)
+            if (buffer_size != width * height * channels)
             {
                 // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
                 return Error("Invalid out buffer size");
             }
-            pixels.resize(buffer_size);
-            size_t pixels_buffer_size = pixels.size() * sizeof(uint8_t);
-            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data(), pixels_buffer_size);
+            pixels = binary { buffer_size };
+            size_t pixels_buffer_size = pixels.size * sizeof(uint8_t);
+            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels_buffer_size);
         }
         else if (status == JXL_DEC_FULL_IMAGE)
         {

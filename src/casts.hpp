@@ -22,15 +22,15 @@ private:
 
     friend struct type_cast<binary>;
 
+    binary& operator=(const binary&) = default;
+
+public:
     binary()
     {
         this->size = 0;
         this->data = nullptr;
     }
 
-    binary& operator=(const binary&) = default;
-
-public:
     explicit binary(size_t size)
     {
         enif_alloc_binary(size, this);
@@ -38,11 +38,7 @@ public:
 
     binary(binary&& other)
     {
-        *this = other;  // trivially copy first
-
-        other.size = 0;
-        other.data = nullptr;
-        other._term = 0;
+        this->operator=(std::move(other));
     }
 
     binary(const binary& other) = delete;
@@ -55,6 +51,17 @@ public:
             this->size = 0;
             this->data = nullptr;
         }
+    }
+
+    binary& operator=(binary&& other)
+    {
+        *this = other;
+
+        other.size = 0;
+        other.data = nullptr;
+        other._term = 0;
+
+        return *this;
     }
 };
 
