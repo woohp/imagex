@@ -1,6 +1,5 @@
 #pragma once
 #include "casts.hpp"
-#include <array>
 #include <map>
 #include <stdexcept>
 #include <unordered_map>
@@ -27,15 +26,20 @@ public:
         }
         else
         {
-            const ERL_NIF_TERM* tup_array;
-            int arity;
-            if (!enif_get_tuple(env, term, &arity, &tup_array))
-                throw std::invalid_argument("invalid vector/tuple");
+            unsigned len = 0;
+            if (!enif_get_list_length(env, term, &len))
+                throw std::invalid_argument("invalid vector");
 
             std::vector<T> items;
-            items.reserve(arity);
-            for (int i = 0; i < arity; i++)
-                items.push_back(type_cast<item_type>::load(env, tup_array[i]));
+            items.reserve(len);
+            ERL_NIF_TERM list_term = term;
+            for (unsigned i = 0; i < len; i++)
+            {
+                ERL_NIF_TERM head, tail;
+                enif_get_list_cell(env, list_term, &head, &tail);
+                items.push_back(type_cast<item_type>::load(env, head));
+                list_term = tail;
+            }
 
             return items;
         }
@@ -58,43 +62,8 @@ public:
             for (const auto& item : items)
                 nif_terms.push_back(type_cast<item_type>::handle(env, item));
 
-            return enif_make_tuple_from_array(env, nif_terms.data(), nif_terms.size());
+            return enif_make_list_from_array(env, nif_terms.data(), nif_terms.size());
         }
-    }
-};
-
-
-template <typename T, std::size_t N>
-struct type_cast<std::array<T, N>>
-{
-private:
-    typedef std::decay_t<T> item_type;
-    typedef std::array<item_type, N> array_type;
-
-public:
-    constexpr static array_type load(ErlNifEnv* env, const ERL_NIF_TERM term)
-    {
-        const ERL_NIF_TERM* tup_array;
-        int arity;
-        if (!enif_get_tuple(env, term, &arity, &tup_array))
-            throw std::invalid_argument("invalid array/tuple");
-        if (arity != N)
-            throw std::invalid_argument("invalid array/tuple");
-
-        array_type items;
-        for (int i = 0; i < arity; i++)
-            items.push_back(type_cast<item_type>::load(env, tup_array[i]));
-
-        return items;
-    }
-
-    constexpr static ERL_NIF_TERM handle(ErlNifEnv* env, const array_type& items) noexcept
-    {
-        std::array<ERL_NIF_TERM, N> nif_terms;
-        for (std::size_t i = 0; i < N; i++)
-            nif_terms[i] = type_cast<item_type>::handle(env, items[i]);
-
-        return enif_make_tuple_from_array(env, nif_terms.data(), N);
     }
 };
 

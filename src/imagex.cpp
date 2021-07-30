@@ -11,6 +11,10 @@
 #include <jxl/thread_parallel_runner_cxx.h>
 #include <memory>
 #include <png.h>
+#include <poppler/cpp/poppler-document.h>
+#include <poppler/cpp/poppler-page-renderer.h>
+#include <poppler/cpp/poppler-page.h>
+#include <poppler/cpp/poppler-version.h>
 #include <stdio.h>
 #include <tuple>
 #include <vector>
@@ -304,10 +308,10 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
         basic_info.bits_per_sample = 32;
         basic_info.exponent_bits_per_sample = 8;
         break;
-    case JXL_TYPE_FLOAT16:
-        basic_info.bits_per_sample = 16;
-        basic_info.exponent_bits_per_sample = 5;
-        break;
+    // case JXL_TYPE_FLOAT16:
+    //     basic_info.bits_per_sample = 16;
+    //     basic_info.exponent_bits_per_sample = 5;
+    //     break;
     case JXL_TYPE_UINT8:
         basic_info.bits_per_sample = 8;
         basic_info.exponent_bits_per_sample = 0;
@@ -488,11 +492,121 @@ erl_result<vector<uint8_t>, string> jxl_compress(
 }
 
 
+void delete_poppler_document(ErlNifEnv* caller_env, void* obj)
+{
+    auto document_p = reinterpret_cast<poppler::document**>(obj);
+    delete *document_p;
+    *document_p = nullptr;
+}
+
+
+ErlNifResourceType* poppler_document_resource_type = nullptr;
+
+
+ERL_NIF_TERM pdf_load_document(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
+{
+    auto bytes = type_cast<binary>::load(env, argv[0]);
+    vector<char> buf(bytes.data, bytes.data + bytes.size);
+    auto document = poppler::document::load_from_data(&buf);
+    if (!document || document->is_locked())
+    {
+        static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"_atom);
+        binary error_msg_binary = "invalid pdf file"_binary;
+        ERL_NIF_TERM error_msg_term = enif_make_binary(env, &error_msg_binary);
+        return enif_make_tuple2(env, error_atom_term, error_msg_term);
+    }
+
+    auto resource_p
+        = reinterpret_cast<poppler::document**>(enif_alloc_resource(poppler_document_resource_type, sizeof(document)));
+    *resource_p = document;
+
+    const auto document_term = enif_make_resource(env, resource_p);
+    enif_release_resource(resource_p);
+
+    auto num_pages_term = enif_make_int(env, document->pages());
+
+    static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"_atom);
+
+    return enif_make_tuple2(env, ok_atom_term, enif_make_tuple2(env, document_term, num_pages_term));
+}
+
+
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>
+pdf_render_page(resource<poppler::document*> document_resource, int page_idx, int dpi)
+{
+    auto document = document_resource.get(poppler_document_resource_type);
+    if (page_idx < 0 || page_idx >= document->pages())
+        throw std::invalid_argument("page index out of range");
+
+    std::unique_ptr<poppler::page> page(document->create_page(page_idx));
+    poppler::page_renderer renderer;
+    renderer.set_render_hints(
+        poppler::page_renderer::antialiasing | poppler::page_renderer::text_antialiasing
+        | poppler::page_renderer::text_hinting);
+    auto image = renderer.render_page(page.get(), dpi, dpi);
+    if (!image.is_valid())
+        return Error("failed to render a valid image");
+
+    string mode;
+    ssize_t buffer_size;
+
+    uint32_t height = image.height();
+    uint32_t width = image.width();
+    binary pixels { height * image.bytes_per_row() };
+    std::copy_n(image.data(), pixels.size, pixels.data);
+    uint32_t channels = image.bytes_per_row() / width;
+
+    return Ok(make_tuple(move(pixels), width, height, channels));
+
+    //     switch (image.format())
+    //     {
+    //     case poppler::image::format_invalid:
+    //         return py::none();
+    //     case poppler::image::format_mono:
+    //         mode = "1";
+    //         buffer_size = ((image.width() + 7) / 8) * image.height();
+    //         break;
+    // #if POPPLER_VERSION_MINOR >= 65
+    //     case poppler::image::format_gray8:
+    //         mode = "L";
+    //         buffer_size = image.width() * image.height();
+    //         break;
+    // #endif
+    //     case poppler::image::format_rgb24:
+    //         buffer_size = image.width() * image.height() * 3;
+    //         mode = "RGB";
+    //         break;
+    // #if POPPLER_VERSION_MINOR >= 65
+    //     case poppler::image::format_bgr24:
+    //         buffer_size = image.width() * image.height() * 3;
+    //         mode = "BGR";
+    //         break;
+    // #endif
+    //     case poppler::image::format_argb32:
+    //         buffer_size = image.width() * image.height() * 4;
+    //         mode = "RGBA";
+    //     }
+}
+
+
+int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
+{
+    poppler_document_resource_type
+        = enif_open_resource_type(caller_env, nullptr, "poppler", delete_poppler_document, ERL_NIF_RT_CREATE, nullptr);
+    return 0;
+}
+
+
 MODULE(
     Elixir.Imagex,
+    load,
+    nullptr,
+    nullptr,
     def(jpeg_decompress, "jpeg_decompress_impl", DirtyFlags::DirtyCpu),
     def(jpeg_compress, "jpeg_compress_impl", DirtyFlags::DirtyCpu),
     def(png_decompress, "png_decompress_impl", DirtyFlags::DirtyCpu),
     def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
-    def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu), )
+    def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
+    ErlNifFunc { "pdf_load_document", 1, pdf_load_document, 0 },
+    def(pdf_render_page, DirtyFlags::DirtyCpu))

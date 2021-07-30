@@ -42,6 +42,14 @@ defmodule Imagex do
     exit(:nif_library_not_loaded)
   end
 
+  def pdf_load_document(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
+  def pdf_render_page(_document, _page_idx, _dpi) do
+    exit(:nif_library_not_loaded)
+  end
+
   defp to_tensor({:ok, {pixels, width, height, channels}}) do
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
     {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
@@ -128,13 +136,30 @@ defmodule Imagex do
   end
 
   def decode(bytes, options \\ []) do
-    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp]) do
-      :jpeg -> to_tensor(jpeg_decompress_impl(bytes))
-      :png -> to_tensor(png_decompress_impl(bytes))
-      :jxl -> to_tensor(jxl_decompress_impl(bytes))
-      :ppm -> Imagex.PPM.decode(bytes)
-      :bmp -> Imagex.BMP.decode(bytes)
-      formats when is_list(formats) -> decode_multi(bytes, formats)
+    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf]) do
+      :jpeg ->
+        to_tensor(jpeg_decompress_impl(bytes))
+
+      :png ->
+        to_tensor(png_decompress_impl(bytes))
+
+      :jxl ->
+        to_tensor(jxl_decompress_impl(bytes))
+
+      :ppm ->
+        Imagex.PPM.decode(bytes)
+
+      :bmp ->
+        Imagex.BMP.decode(bytes)
+
+      :pdf ->
+        case Imagex.pdf_load_document(bytes) do
+          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
+          error -> error
+        end
+
+      formats when is_list(formats) ->
+        decode_multi(bytes, formats)
     end
   end
 
@@ -154,6 +179,7 @@ defmodule Imagex do
   defp ext_to_format(".pgm"), do: :ppm
   defp ext_to_format(".ppm"), do: :ppm
   defp ext_to_format(".bmp"), do: :bmp
+  defp ext_to_format(".pdf"), do: :pdf
 
   def save(%Nx.Tensor{} = image, path, options \\ []) when is_binary(path) do
     format = ext_to_format(String.downcase(Path.extname(path)))

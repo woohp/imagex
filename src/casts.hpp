@@ -66,6 +66,39 @@ public:
 };
 
 
+binary operator"" _binary(const char* s, std::size_t len)
+{
+    binary binary_info;
+    enif_alloc_binary(len, &binary_info);
+    std::copy_n(s, len, binary_info.data);
+    return binary_info;
+}
+
+
+template <typename T>
+class resource
+{
+    ErlNifEnv* env;
+    ERL_NIF_TERM term;
+
+    friend struct type_cast<resource<T>>;
+
+    resource(ErlNifEnv* env, ERL_NIF_TERM term)
+        : env(env)
+        , term(term)
+    { }
+
+public:
+    T& get(ErlNifResourceType* resource_type)
+    {
+        void* objp = nullptr;
+        if (!enif_get_resource(env, term, resource_type, &objp))
+            throw std::invalid_argument("invalid resource");
+        return *reinterpret_cast<T*>(objp);
+    }
+};
+
+
 template <>
 struct type_cast<int>
 {
@@ -374,5 +407,15 @@ struct type_cast<std::optional<T>>
             static ERL_NIF_TERM nil_atom_term = type_cast<atom>::handle(env, "nil"_atom);
             return nil_atom_term;
         }
+    }
+};
+
+
+template <typename T>
+struct type_cast<resource<T>>
+{
+    static resource<T> load(ErlNifEnv* env, ERL_NIF_TERM term)
+    {
+        return resource<T> { env, term };
     }
 };

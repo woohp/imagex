@@ -30,9 +30,12 @@ struct function_traits<R (*)(Args...) noexcept(IsNoexcept)>
 
 
 template <typename Fn, Fn fn>
-constexpr ERL_NIF_TERM wrapper(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
+constexpr ERL_NIF_TERM wrapper(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     using func_traits = function_traits<Fn>;
+
+    if (argc != func_traits::nargs)
+        return enif_make_badarg(env);
 
     try
     {
@@ -90,6 +93,6 @@ We want to be able to write:
 #define def(...) GET_MACRO(__VA_ARGS__, DEF3, DEF2, UNUSED)(__VA_ARGS__)
 
 
-#define MODULE(name, ...)                                                                                              \
+#define MODULE(NAME, LOAD, UPGRADE, UNLOAD, ...)                                                                       \
     ErlNifFunc _nif_funcs[] = { __VA_ARGS__ };                                                                         \
-    ERL_NIF_INIT(name, _nif_funcs, nullptr, nullptr, nullptr, nullptr)
+    ERL_NIF_INIT(NAME, _nif_funcs, LOAD, nullptr, UPGRADE, UNLOAD)

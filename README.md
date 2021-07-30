@@ -39,3 +39,13 @@ or save to memory
 ```elixir
 compressed = Imagex.encode(image, :jpeg)
 ```
+
+To work with pdf files
+
+```elixir
+bytes = File.read!("lena.pdf")
+{:ok, pdf_document} = Imagex.decode(bytes, format: pdf)
+for i <- 0..pdf_document.num_pages-1 do
+  {:ok, image} = Imagex.Pdf.render_page(pdf_document, i, dpi: 150)
+end
+```

@@ -146,4 +146,16 @@ defmodule ImagexTest do
     {:ok, %Tensor{} = image} = Imagex.open("test/assets/lena.jpg")
     assert image.shape == {512, 512, 3}
   end
+
+  test "load and render pdf document" do
+    bytes = File.read!("test/assets/lena.pdf")
+    {:ok, %Imagex.Pdf{} = pdf} = Imagex.decode(bytes, format: :pdf)
+    assert pdf.num_pages == 1
+
+    {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0)
+    assert image.shape == {512, 512, 4}
+
+    {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0, dpi: 144)  # double the default dpi of 72
+    assert image.shape == {1024, 1024, 4}
+  end
 end
