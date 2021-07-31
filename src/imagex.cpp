@@ -598,7 +598,7 @@ int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 
 
 MODULE(
-    Elixir.Imagex,
+    Elixir.Imagex.C,
     load,
     nullptr,
     nullptr,
@@ -608,5 +608,5 @@ MODULE(
     def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
     def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
-    ErlNifFunc { "pdf_load_document", 1, pdf_load_document, 0 },
-    def(pdf_render_page, DirtyFlags::DirtyCpu))
+    ErlNifFunc { "pdf_load_document_impl", 1, pdf_load_document, 0 },
+    def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu))

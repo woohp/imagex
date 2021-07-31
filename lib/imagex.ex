@@ -3,53 +3,6 @@ defmodule Imagex do
   Documentation for Imagex.
   """
 
-  @on_load :init
-
-  app = Mix.Project.config()[:app]
-
-  def init do
-    base_path =
-      case :code.priv_dir(unquote(app)) do
-        {:error, :bad_name} -> 'priv'
-        dir -> dir
-      end
-
-    path = :filename.join(base_path, 'imagex')
-    :ok = :erlang.load_nif(path, 0)
-  end
-
-  def jpeg_decompress_impl(_bytes) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def jpeg_compress_impl(_pixels, _width, _height, _channels, _quality) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def png_decompress_impl(_bytes) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def png_compress_impl(_pixels, _width, _height, _channels) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def jxl_decompress_impl(_bytes) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def jxl_compress_impl(_pixels, _width, _height, _channels, _distance, _lossless, _effort) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def pdf_load_document(_bytes) do
-    exit(:nif_library_not_loaded)
-  end
-
-  def pdf_render_page(_document, _page_idx, _dpi) do
-    exit(:nif_library_not_loaded)
-  end
-
   defp to_tensor({:ok, {pixels, width, height, channels}}) do
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
     {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
@@ -73,13 +26,13 @@ defmodule Imagex do
     quality = Keyword.get(options, :quality, 75)
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
-    jpeg_compress_impl(pixels, w, h, c, quality)
+    Imagex.C.jpeg_compress_impl(pixels, w, h, c, quality)
   end
 
   def encode(image = %Nx.Tensor{}, :png, _options) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
-    png_compress_impl(pixels, w, h, c)
+    Imagex.C.png_compress_impl(pixels, w, h, c)
   end
 
   def encode(image = %Nx.Tensor{}, :jxl, options) do
@@ -107,7 +60,7 @@ defmodule Imagex do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
 
-    jxl_compress_impl(
+    Imagex.C.jxl_compress_impl(
       pixels,
       w,
       h,
@@ -138,13 +91,13 @@ defmodule Imagex do
   def decode(bytes, options \\ []) do
     case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf]) do
       :jpeg ->
-        to_tensor(jpeg_decompress_impl(bytes))
+        to_tensor(Imagex.C.jpeg_decompress_impl(bytes))
 
       :png ->
-        to_tensor(png_decompress_impl(bytes))
+        to_tensor(Imagex.C.png_decompress_impl(bytes))
 
       :jxl ->
-        to_tensor(jxl_decompress_impl(bytes))
+        to_tensor(Imagex.C.jxl_decompress_impl(bytes))
 
       :ppm ->
         Imagex.PPM.decode(bytes)
@@ -153,7 +106,7 @@ defmodule Imagex do
         Imagex.BMP.decode(bytes)
 
       :pdf ->
-        case Imagex.pdf_load_document(bytes) do
+        case Imagex.C.pdf_load_document_impl(bytes) do
           {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
           error -> error
         end
