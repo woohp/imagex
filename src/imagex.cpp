@@ -170,25 +170,25 @@ struct png_read_binary
 };
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t, tuple<tuple<int, int>>>, string>
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t, tuple<tuple<int, int>>>, binary>
 png_decompress(const binary& png_bytes) noexcept
 {
     // check png signature
     if (png_sig_cmp(png_bytes.data, 0, 8))
-        return Error("invalid png header");
+        return Error("invalid png header"_binary);
 
     png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
-        return Error("couldn't initialize png read struct");
+        return Error("couldn't initialize png read struct"_binary);
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("couldn't initialize png info struct");
+        return Error("couldn't initialize png info struct"_binary);
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-        return Error("An error has occured while reading the PNG file");
+        return Error("An error has occured while reading the PNG file"_binary);
     }
 
     png_read_binary data_wrapper(png_bytes);
@@ -238,21 +238,21 @@ png_decompress(const binary& png_bytes) noexcept
 }
 
 
-erl_result<vector<png_byte>, string>
+erl_result<vector<png_byte>, binary>
 png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
 {
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
-        return Error("couldn't initialize png write struct");
+        return Error("couldn't initialize png write struct"_binary);
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("[write_png_file] png_create_info_struct failed");
+        return Error("[write_png_file] png_create_info_struct failed"_binary);
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
         png_destroy_write_struct(&png_ptr, &info_ptr);
-        return Error("[write_png_file] Error during init_io");
+        return Error("[write_png_file] Error during init_io"_binary);
     }
 
     // set up the output data, as well as the callback to write into that data
@@ -294,7 +294,7 @@ png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
 #define JXL_ENSURE_SUCCESS(func, ...)                                                                                  \
     if (func(__VA_ARGS__) != 0)                                                                                        \
     {                                                                                                                  \
-        return Error(#func " failed");                                                                                 \
+        return Error(#func " failed"_binary);                                                                          \
     }
 
 
@@ -348,7 +348,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(const binary& jxl_bytes)
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
     auto runner = JxlThreadParallelRunnerMake(nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
@@ -373,11 +373,11 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(c
 
         if (status == JXL_DEC_ERROR)
         {
-            return Error("Decoder error");
+            return Error("Decoder error"_binary);
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return Error("Error, already provided all input");
+            return Error("Error, already provided all input"_binary);
         }
         else if (status == JXL_DEC_BASIC_INFO)
         {
@@ -408,7 +408,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(c
             if (buffer_size != width * height * channels)
             {
                 // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
-                return Error("Invalid out buffer size");
+                return Error("Invalid out buffer size"_binary);
             }
             pixels = binary { buffer_size };
             size_t pixels_buffer_size = pixels.size * sizeof(uint8_t);
@@ -428,13 +428,13 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jxl_decompress(c
         }
         else
         {
-            return Error("Unknown decoder status");
+            return Error("Unknown decoder status"_binary);
         }
     }
 }
 
 
-erl_result<vector<uint8_t>, string> jxl_compress(
+erl_result<vector<uint8_t>, binary> jxl_compress(
     const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, double distance, int lossless, int effort)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
@@ -485,7 +485,7 @@ erl_result<vector<uint8_t>, string> jxl_compress(
     if (process_result != JXL_ENC_SUCCESS)
     {
         printf("status: %d\n", process_result);
-        return Error("JxlEncoderProcessOutput failed");
+        return Error("JxlEncoderProcessOutput failed"_binary);
     }
 
     return Ok(compressed);
@@ -531,7 +531,7 @@ ERL_NIF_TERM pdf_load_document(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
 pdf_render_page(resource<poppler::document*> document_resource, int page_idx, int dpi)
 {
     auto document = document_resource.get(poppler_document_resource_type);
@@ -545,7 +545,7 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
         | poppler::page_renderer::text_hinting);
     auto image = renderer.render_page(page.get(), dpi, dpi);
     if (!image.is_valid())
-        return Error("failed to render a valid image");
+        return Error("failed to render a valid image"_binary);
 
     string mode;
     ssize_t buffer_size;

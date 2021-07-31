@@ -36,6 +36,13 @@ public:
         enif_alloc_binary(size, this);
     }
 
+    template <size_t N>
+    explicit binary(const char (&str)[N])
+    {
+        enif_alloc_binary(N - 1, this);
+        std::copy_n(str, N - 1, this->data);
+    }
+
     binary(binary&& other)
     {
         this->operator=(std::move(other));
