@@ -503,31 +503,23 @@ void delete_poppler_document(ErlNifEnv* caller_env, void* obj)
 ErlNifResourceType* poppler_document_resource_type = nullptr;
 
 
-ERL_NIF_TERM pdf_load_document(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
+erl_result<tuple<resource<poppler::document*>, int>, binary> pdf_load_document(binary bytes)
 {
-    auto bytes = type_cast<binary>::load(env, argv[0]);
+    // load document from bytes and check for errors
     vector<char> buf(bytes.data, bytes.data + bytes.size);
     auto document = poppler::document::load_from_data(&buf);
-    if (!document || document->is_locked())
+    if (!document)
+        return Error("invalid pdf file"_binary);
+    if (document->is_locked())
     {
-        static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"_atom);
-        binary error_msg_binary = "invalid pdf file"_binary;
-        ERL_NIF_TERM error_msg_term = enif_make_binary(env, &error_msg_binary);
-        return enif_make_tuple2(env, error_atom_term, error_msg_term);
+        delete document;
+        return Error("document is locked"_binary);
     }
 
-    auto resource_p
-        = reinterpret_cast<poppler::document**>(enif_alloc_resource(poppler_document_resource_type, sizeof(document)));
-    *resource_p = document;
+    auto document_resource = resource<poppler::document*>::alloc(document, poppler_document_resource_type);
+    auto num_pages = document->pages();
 
-    const auto document_term = enif_make_resource(env, resource_p);
-    enif_release_resource(resource_p);
-
-    auto num_pages_term = enif_make_int(env, document->pages());
-
-    static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"_atom);
-
-    return enif_make_tuple2(env, ok_atom_term, enif_make_tuple2(env, document_term, num_pages_term));
+    return Ok(make_tuple(document_resource, num_pages));
 }
 
 
@@ -587,5 +579,5 @@ MODULE(
     def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
     def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
-    ErlNifFunc { "pdf_load_document_impl", 1, pdf_load_document, ERL_NIF_DIRTY_JOB_CPU_BOUND },
+    def(pdf_load_document, "pdf_load_document_impl", DirtyFlags::DirtyCpu),
     def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu))

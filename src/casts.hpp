@@ -87,21 +87,35 @@ class resource
 {
     ErlNifEnv* env;
     ERL_NIF_TERM term;
+    void* objp;
 
     friend struct type_cast<resource<T>>;
 
     resource(ErlNifEnv* env, ERL_NIF_TERM term)
         : env(env)
         , term(term)
+        , objp(nullptr)
+    { }
+
+    resource(T* objp)
+        : env(nullptr)
+        , term(0)
+        , objp(objp)
     { }
 
 public:
     T& get(ErlNifResourceType* resource_type)
     {
-        void* objp = nullptr;
-        if (!enif_get_resource(env, term, resource_type, &objp))
+        if (!enif_get_resource(env, term, resource_type, &this->objp))
             throw std::invalid_argument("invalid resource");
-        return *reinterpret_cast<T*>(objp);
+        return *reinterpret_cast<T*>(this->objp);
+    }
+
+    static resource<T> alloc(const T& obj, ErlNifResourceType* resource_type)
+    {
+        T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource_type, sizeof(T)));
+        *objp = obj;
+        return resource<T> { objp };
     }
 };
 
@@ -405,7 +419,7 @@ struct type_cast<std::optional<T>>
         }
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::optional<T>& item) noexcept
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::optional<T>& item)
     {
         if (item)
             return type_cast<T>::handle(env, *item);
@@ -424,5 +438,12 @@ struct type_cast<resource<T>>
     static resource<T> load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
         return resource<T> { env, term };
+    }
+
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const resource<T>& res)
+    {
+        const auto document_term = enif_make_resource(env, res.objp);
+        enif_release_resource(res.objp);
+        return document_term;
     }
 };
