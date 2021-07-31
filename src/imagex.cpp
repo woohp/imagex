@@ -547,45 +547,24 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
     if (!image.is_valid())
         return Error("failed to render a valid image"_binary);
 
-    string mode;
-    ssize_t buffer_size;
-
     uint32_t height = image.height();
     uint32_t width = image.width();
     binary pixels { height * image.bytes_per_row() };
     std::copy_n(image.data(), pixels.size, pixels.data);
     uint32_t channels = image.bytes_per_row() / width;
 
-    return Ok(make_tuple(move(pixels), width, height, channels));
+    const auto format = image.format();
+    if (format == poppler::image::format_invalid)
+        return Error("Invalid image format"_binary);
+    else if (format == poppler::image::format_mono)
+        return Error("Mono images not supported right now"_binary);
+    else if (format == poppler::image::format_bgr24 || format == poppler::image::format_argb32)
+    {
+        for (uint32_t i = 0; i < pixels.size; i += channels)
+            std::swap(pixels.data[i], pixels.data[i + 2]);
+    }
 
-    //     switch (image.format())
-    //     {
-    //     case poppler::image::format_invalid:
-    //         return py::none();
-    //     case poppler::image::format_mono:
-    //         mode = "1";
-    //         buffer_size = ((image.width() + 7) / 8) * image.height();
-    //         break;
-    // #if POPPLER_VERSION_MINOR >= 65
-    //     case poppler::image::format_gray8:
-    //         mode = "L";
-    //         buffer_size = image.width() * image.height();
-    //         break;
-    // #endif
-    //     case poppler::image::format_rgb24:
-    //         buffer_size = image.width() * image.height() * 3;
-    //         mode = "RGB";
-    //         break;
-    // #if POPPLER_VERSION_MINOR >= 65
-    //     case poppler::image::format_bgr24:
-    //         buffer_size = image.width() * image.height() * 3;
-    //         mode = "BGR";
-    //         break;
-    // #endif
-    //     case poppler::image::format_argb32:
-    //         buffer_size = image.width() * image.height() * 4;
-    //         mode = "RGBA";
-    //     }
+    return Ok(make_tuple(move(pixels), width, height, channels));
 }
 
 
@@ -608,5 +587,5 @@ MODULE(
     def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
     def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
-    ErlNifFunc { "pdf_load_document_impl", 1, pdf_load_document, 0 },
+    ErlNifFunc { "pdf_load_document_impl", 1, pdf_load_document, ERL_NIF_DIRTY_JOB_CPU_BOUND },
     def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu))
