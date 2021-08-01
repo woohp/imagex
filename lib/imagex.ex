@@ -89,7 +89,7 @@ defmodule Imagex do
   end
 
   def decode(bytes, options \\ []) do
-    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf]) do
+    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf, :tiff]) do
       :jpeg ->
         to_tensor(Imagex.C.jpeg_decompress_impl(bytes))
 
@@ -108,6 +108,12 @@ defmodule Imagex do
       :pdf ->
         case Imagex.C.pdf_load_document_impl(bytes) do
           {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
+          error -> error
+        end
+
+      :tiff ->
+        case Imagex.C.tiff_load_document_impl(bytes) do
+          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
           error -> error
         end
 
@@ -133,6 +139,8 @@ defmodule Imagex do
   defp ext_to_format(".ppm"), do: :ppm
   defp ext_to_format(".bmp"), do: :bmp
   defp ext_to_format(".pdf"), do: :pdf
+  defp ext_to_format(".tiff"), do: :tiff
+  defp ext_to_format(".tif"), do: :tiff
 
   def save(%Nx.Tensor{} = image, path, options \\ []) when is_binary(path) do
     format = ext_to_format(String.downcase(Path.extname(path)))

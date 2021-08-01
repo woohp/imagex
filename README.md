@@ -49,3 +49,13 @@ for i <- 0..pdf_document.num_pages-1 do
   {:ok, image} = Imagex.Pdf.render_page(pdf_document, i, dpi: 150)
 end
 ```
+
+and similarly, work with tiff files
+
+```elixir
+bytes = File.read!("lena.tiff")
+{:ok, tiff_document} = Imagex.decode(bytes, format: tiff)
+for i <- 0..tiff_document.num_pages-1 do
+  {:ok, image} = Imagex.Tiff.render_page(tiff_document, i)
+end
+```

@@ -221,7 +221,7 @@ struct type_cast<std::string>
         return std::string(reinterpret_cast<const char*>(binary_info.data), binary_info.size);
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::string& s) noexcept
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::string& s)
     {
         ErlNifBinary binary_info;
         enif_alloc_binary(s.size(), &binary_info);

@@ -15,7 +15,10 @@
 #include <poppler/cpp/poppler-page-renderer.h>
 #include <poppler/cpp/poppler-page.h>
 #include <poppler/cpp/poppler-version.h>
+#include <sstream>
 #include <stdio.h>
+#include <tiffio.h>
+#include <tiffio.hxx>
 #include <tuple>
 #include <vector>
 
@@ -467,7 +470,7 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     JXL_ENSURE_SUCCESS(
         JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, sizeof(uint8_t) * pixels.size);
 
-    std::vector<uint8_t> compressed(64);
+    vector<uint8_t> compressed(64);
     uint8_t* next_out = compressed.data();
     size_t avail_out = compressed.size() - (next_out - compressed.data());
     JxlEncoderStatus process_result;
@@ -500,7 +503,16 @@ void delete_poppler_document(ErlNifEnv* caller_env, void* obj)
 }
 
 
+void delete_tiff_document(ErlNifEnv* caller_env, void* obj)
+{
+    auto document_p = reinterpret_cast<pair<TIFF*, stringstream*>*>(obj);
+    TIFFClose(document_p->first);
+    delete document_p->second;
+}
+
+
 ErlNifResourceType* poppler_document_resource_type = nullptr;
+ErlNifResourceType* tiff_document_resource_type = nullptr;
 
 
 erl_result<tuple<resource<poppler::document*>, int>, binary> pdf_load_document(binary bytes)
@@ -530,7 +542,7 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
     if (page_idx < 0 || page_idx >= document->pages())
         throw std::invalid_argument("page index out of range");
 
-    std::unique_ptr<poppler::page> page(document->create_page(page_idx));
+    unique_ptr<poppler::page> page(document->create_page(page_idx));
     poppler::page_renderer renderer;
     renderer.set_render_hints(
         poppler::page_renderer::antialiasing | poppler::page_renderer::text_antialiasing
@@ -542,7 +554,7 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
     uint32_t height = image.height();
     uint32_t width = image.width();
     binary pixels { height * image.bytes_per_row() };
-    std::copy_n(image.data(), pixels.size, pixels.data);
+    copy_n(image.data(), pixels.size, pixels.data);
     uint32_t channels = image.bytes_per_row() / width;
 
     const auto format = image.format();
@@ -552,6 +564,7 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
         return Error("Mono images not supported right now"_binary);
     else if (format == poppler::image::format_bgr24 || format == poppler::image::format_argb32)
     {
+        // convert bgr to rgb
         for (uint32_t i = 0; i < pixels.size; i += channels)
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
@@ -560,10 +573,54 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
 }
 
 
+erl_result<tuple<resource<pair<TIFF*, stringstream*>>, int>, binary> tiff_load_document(binary bytes)
+{
+    // load document from bytes and check for errors
+    auto sstream = new stringstream;
+    sstream->write(reinterpret_cast<char*>(bytes.data), bytes.size);
+    auto document = TIFFStreamOpen("file.tiff", static_cast<std::istream*>(sstream));
+    if (!document)
+        return Error("invalid tiff file"_binary);
+
+    auto document_resource
+        = resource<pair<TIFF*, stringstream*>>::alloc({ document, sstream }, tiff_document_resource_type);
+
+    int num_pages = 0;
+    do
+    {
+        num_pages++;
+    } while (TIFFReadDirectory(document));
+
+    return Ok(make_tuple(document_resource, num_pages));
+}
+
+
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
+tiff_render_page(resource<pair<TIFF*, stringstream*>> document_resource, int page_index)
+{
+    auto [document, _] = document_resource.get(tiff_document_resource_type);
+
+    TIFFSetDirectory(document, page_index);
+
+    int width, height;
+    TIFFGetField(document, TIFFTAG_IMAGEWIDTH, &width);
+    TIFFGetField(document, TIFFTAG_IMAGELENGTH, &height);
+
+    binary pixels { static_cast<size_t>(width * height * 4) };
+    TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), 1, 0);
+
+    return Ok(make_tuple(std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u));
+}
+
+
 int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
     poppler_document_resource_type
         = enif_open_resource_type(caller_env, nullptr, "poppler", delete_poppler_document, ERL_NIF_RT_CREATE, nullptr);
+    tiff_document_resource_type
+        = enif_open_resource_type(caller_env, nullptr, "tiff", delete_tiff_document, ERL_NIF_RT_CREATE, nullptr);
+    TIFFSetWarningHandler(nullptr);
+
     return 0;
 }
 
@@ -580,4 +637,6 @@ MODULE(
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
     def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
     def(pdf_load_document, "pdf_load_document_impl", DirtyFlags::DirtyCpu),
-    def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu))
+    def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu),
+    def(tiff_load_document, "tiff_load_document_impl", DirtyFlags::DirtyCpu),
+    def(tiff_render_page, "tiff_render_page_impl", DirtyFlags::DirtyCpu), )

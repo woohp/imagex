@@ -158,4 +158,13 @@ defmodule ImagexTest do
     {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0, dpi: 144)  # double the default dpi of 72
     assert image.shape == {1024, 1024, 4}
   end
+
+  test "load and render tiff document" do
+    bytes = File.read!("test/assets/lena.tiff")
+    {:ok, %Imagex.Tiff{} = tiff} = Imagex.decode(bytes, format: :tiff)
+    assert tiff.num_pages == 1
+
+    {:ok, %Nx.Tensor{} = image} = Imagex.Tiff.render_page(tiff, 0)
+    assert image.shape == {512, 512, 4}
+  end
 end

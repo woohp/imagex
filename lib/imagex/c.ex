@@ -45,4 +45,12 @@ defmodule Imagex.C do
   def pdf_render_page_impl(_document, _page_idx, _dpi) do
     exit(:nif_library_not_loaded)
   end
+
+  def tiff_load_document_impl(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
+  def tiff_render_page_impl(_document, _page_idx) do
+    exit(:nif_library_not_loaded)
+  end
 end
