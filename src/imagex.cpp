@@ -511,15 +511,15 @@ void delete_tiff_document(ErlNifEnv* caller_env, void* obj)
 }
 
 
-ErlNifResourceType* poppler_document_resource_type = nullptr;
-ErlNifResourceType* tiff_document_resource_type = nullptr;
+typedef resource<poppler::document*> pdf_resource_t;
+typedef resource<pair<TIFF*, stringstream*>> tiff_resource_t;
 
 
-erl_result<tuple<resource<poppler::document*>, int>, binary> pdf_load_document(binary bytes)
+erl_result<tuple<pdf_resource_t, int>, binary> pdf_load_document(binary bytes)
 {
     // load document from bytes and check for errors
     vector<char> buf(bytes.data, bytes.data + bytes.size);
-    auto document = poppler::document::load_from_data(&buf);
+    poppler::document* document = poppler::document::load_from_data(&buf);
     if (!document)
         return Error("invalid pdf file"_binary);
     if (document->is_locked())
@@ -528,7 +528,7 @@ erl_result<tuple<resource<poppler::document*>, int>, binary> pdf_load_document(b
         return Error("document is locked"_binary);
     }
 
-    auto document_resource = resource<poppler::document*>::alloc(document, poppler_document_resource_type);
+    auto document_resource = pdf_resource_t::alloc(document);
     auto num_pages = document->pages();
 
     return Ok(make_tuple(document_resource, num_pages));
@@ -536,9 +536,9 @@ erl_result<tuple<resource<poppler::document*>, int>, binary> pdf_load_document(b
 
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
-pdf_render_page(resource<poppler::document*> document_resource, int page_idx, int dpi)
+pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 {
-    auto document = document_resource.get(poppler_document_resource_type);
+    auto document = document_resource.get();
     if (page_idx < 0 || page_idx >= document->pages())
         throw std::invalid_argument("page index out of range");
 
@@ -573,7 +573,7 @@ pdf_render_page(resource<poppler::document*> document_resource, int page_idx, in
 }
 
 
-erl_result<tuple<resource<pair<TIFF*, stringstream*>>, int>, binary> tiff_load_document(binary bytes)
+erl_result<tuple<tiff_resource_t, int>, binary> tiff_load_document(binary bytes)
 {
     // load document from bytes and check for errors
     auto sstream = new stringstream;
@@ -582,8 +582,7 @@ erl_result<tuple<resource<pair<TIFF*, stringstream*>>, int>, binary> tiff_load_d
     if (!document)
         return Error("invalid tiff file"_binary);
 
-    auto document_resource
-        = resource<pair<TIFF*, stringstream*>>::alloc({ document, sstream }, tiff_document_resource_type);
+    auto document_resource = tiff_resource_t::alloc({ document, sstream });
 
     int num_pages = 0;
     do
@@ -596,9 +595,9 @@ erl_result<tuple<resource<pair<TIFF*, stringstream*>>, int>, binary> tiff_load_d
 
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
-tiff_render_page(resource<pair<TIFF*, stringstream*>> document_resource, int page_index)
+tiff_render_page(tiff_resource_t document_resource, int page_index)
 {
-    auto [document, _] = document_resource.get(tiff_document_resource_type);
+    auto [document, _] = document_resource.get();
 
     TIFFSetDirectory(document, page_index);
 
@@ -615,9 +614,9 @@ tiff_render_page(resource<pair<TIFF*, stringstream*>> document_resource, int pag
 
 int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
-    poppler_document_resource_type
+    pdf_resource_t::resource_type
         = enif_open_resource_type(caller_env, nullptr, "poppler", delete_poppler_document, ERL_NIF_RT_CREATE, nullptr);
-    tiff_document_resource_type
+    tiff_resource_t::resource_type
         = enif_open_resource_type(caller_env, nullptr, "tiff", delete_tiff_document, ERL_NIF_RT_CREATE, nullptr);
     TIFFSetWarningHandler(nullptr);
 

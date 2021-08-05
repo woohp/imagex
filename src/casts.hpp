@@ -104,20 +104,26 @@ class resource
     { }
 
 public:
-    T& get(ErlNifResourceType* resource_type)
+    T& get()
     {
-        if (!enif_get_resource(env, term, resource_type, &this->objp))
+        if (!enif_get_resource(env, term, resource<T>::resource_type, &this->objp))
             throw std::invalid_argument("invalid resource");
         return *reinterpret_cast<T*>(this->objp);
     }
 
-    static resource<T> alloc(const T& obj, ErlNifResourceType* resource_type)
+    static resource<T> alloc(const T& obj)
     {
-        T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource_type, sizeof(T)));
+        T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource<T>::resource_type, sizeof(T)));
         *objp = obj;
         return resource<T> { objp };
     }
+
+    static ErlNifResourceType* resource_type;
 };
+
+
+template <typename T>
+ErlNifResourceType* resource<T>::resource_type = nullptr;
 
 
 template <>
