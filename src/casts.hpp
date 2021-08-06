@@ -1,6 +1,8 @@
 #pragma once
 #include "atom.hpp"
+#include "binary.hpp"
 #include "ext_types.hpp"
+#include "resource.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <erl_nif.h>
@@ -11,119 +13,9 @@
 #include <tuple>
 #include <variant>
 
+
 template <typename T>
 struct type_cast;
-
-
-class binary : public ErlNifBinary
-{
-private:
-    ERL_NIF_TERM _term = 0;
-
-    friend struct type_cast<binary>;
-
-    binary& operator=(const binary&) = default;
-
-public:
-    binary()
-    {
-        this->size = 0;
-        this->data = nullptr;
-    }
-
-    explicit binary(size_t size)
-    {
-        enif_alloc_binary(size, this);
-    }
-
-    template <size_t N>
-    explicit binary(const char (&str)[N])
-    {
-        enif_alloc_binary(N - 1, this);
-        std::copy_n(str, N - 1, this->data);
-    }
-
-    binary(binary&& other)
-    {
-        this->operator=(std::move(other));
-    }
-
-    binary(const binary& other) = delete;
-
-    ~binary()
-    {
-        if (!this->_term && this->data)
-        {
-            enif_release_binary(this);
-            this->size = 0;
-            this->data = nullptr;
-        }
-    }
-
-    binary& operator=(binary&& other)
-    {
-        *this = other;
-
-        other.size = 0;
-        other.data = nullptr;
-        other._term = 0;
-
-        return *this;
-    }
-};
-
-
-binary operator"" _binary(const char* s, std::size_t len)
-{
-    binary binary_info;
-    enif_alloc_binary(len, &binary_info);
-    std::copy_n(s, len, binary_info.data);
-    return binary_info;
-}
-
-
-template <typename T>
-class resource
-{
-    ErlNifEnv* env;
-    ERL_NIF_TERM term;
-    void* objp;
-
-    friend struct type_cast<resource<T>>;
-
-    resource(ErlNifEnv* env, ERL_NIF_TERM term)
-        : env(env)
-        , term(term)
-        , objp(nullptr)
-    { }
-
-    resource(T* objp)
-        : env(nullptr)
-        , term(0)
-        , objp(objp)
-    { }
-
-public:
-    T& get()
-    {
-        if (!enif_get_resource(env, term, resource<T>::resource_type, &this->objp))
-            throw std::invalid_argument("invalid resource");
-        return *reinterpret_cast<T*>(this->objp);
-    }
-
-    static resource<T> alloc(const T& obj)
-    {
-        T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource<T>::resource_type, sizeof(T)));
-        *objp = obj;
-        return resource<T> { objp };
-    }
-
-    static ErlNifResourceType* resource_type;
-};
-
-
-template <typename T>
-ErlNifResourceType* resource<T>::resource_type = nullptr;
 
 
 template <>
