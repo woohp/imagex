@@ -438,7 +438,13 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
 
 
 erl_result<vector<uint8_t>, binary> jxl_compress(
-    const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, double distance, int lossless, int effort)
+    const binary& pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t channels,
+    double distance,
+    bool lossless,
+    int effort)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     auto runner = JxlThreadParallelRunnerMake(
@@ -459,8 +465,8 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     JXL_ENSURE_SUCCESS(JxlEncoderSetColorEncoding, enc.get(), &color_encoding);
 
     if (distance == 0)
-        lossless = 1;
-    else if (lossless == 1)
+        lossless = true;
+    else if (lossless)
         distance = 0;
     auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
     JxlEncoderOptionsSetLossless(encoder_options, lossless);

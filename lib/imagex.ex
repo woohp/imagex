@@ -43,7 +43,7 @@ defmodule Imagex do
       end + 0.0
 
     # the config variable must be boolean, but the impl expects an integer
-    lossless = (Keyword.get(options, :lossless, false) && 1) || 0
+    lossless = Keyword.get(options, :lossless, false)
 
     effort =
       case Keyword.get(options, :effort, 7) do
