@@ -311,10 +311,10 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
         basic_info.bits_per_sample = 32;
         basic_info.exponent_bits_per_sample = 8;
         break;
-    // case JXL_TYPE_FLOAT16:
-    //     basic_info.bits_per_sample = 16;
-    //     basic_info.exponent_bits_per_sample = 5;
-    //     break;
+    case JXL_TYPE_FLOAT16:
+        basic_info.bits_per_sample = 16;
+        basic_info.exponent_bits_per_sample = 5;
+        break;
     case JXL_TYPE_UINT8:
         basic_info.bits_per_sample = 8;
         basic_info.exponent_bits_per_sample = 0;
