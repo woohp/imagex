@@ -98,6 +98,37 @@ defmodule ImagexTest do
     end
   end
 
+  test "jpeg-xl transcode from jpeg" do
+    jpeg_bytes = File.read!("test/assets/lena.jpg")
+
+    # do a roundtrip conversion: jpeg -> jxl -> pixels
+    # check that pixels ~= jpeg pixels, (almost equals b/c jxl might decode a bit differently)
+    {:ok, jxl_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes)
+    assert byte_size(jxl_bytes) < byte_size(jpeg_bytes)
+
+    {:ok, image_from_jxl} = Imagex.decode(jxl_bytes, format: :jxl)
+    {:ok, image_from_jpeg} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+    max_diff = Nx.subtract(
+      Nx.as_type(image_from_jxl, {:s, 16}),
+      Nx.as_type(image_from_jpeg, {:s, 16})
+    )
+    |> Nx.abs()
+    |> Nx.reduce_max()
+    |> Nx.to_scalar()
+
+    assert max_diff <= 20
+  end
+
+  test "jpeg-xl transcode from jpeg with different efforts" do
+    jpeg_bytes = File.read!("test/assets/lena.jpg")
+
+    {:ok, low_effort_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes, effort: 3)
+    {:ok, high_effort_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes, effort: 9)
+
+    assert byte_size(high_effort_bytes) < byte_size(low_effort_bytes)
+  end
+
   test "decode ppm" do
     ppm_bytes = File.read!("test/assets/lena.ppm")
     {:ok, image} = Imagex.decode(ppm_bytes, format: :ppm)

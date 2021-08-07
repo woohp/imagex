@@ -34,7 +34,7 @@ struct Ok
 {
     OkType value;
 
-    constexpr explicit Ok(OkType value)
+    constexpr explicit Ok(OkType&& value)
         : value(std::move(value))
     { }
 };
@@ -45,7 +45,7 @@ struct Error
 {
     ErrorType value;
 
-    constexpr explicit Error(ErrorType value)
+    constexpr explicit Error(ErrorType&& value)
         : value(std::move(value))
     { }
 };

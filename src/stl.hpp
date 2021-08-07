@@ -15,7 +15,7 @@ private:
 public:
     constexpr static std::vector<T> load(ErlNifEnv* env, const ERL_NIF_TERM term)
     {
-        if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> || std::is_same_v<T, std::byte>)
+        if constexpr ((std::is_integral_v<T> && sizeof(T) == 1) || std::is_same_v<T, std::byte>)
         {
             ErlNifBinary binary_info;
             if (!enif_inspect_binary(env, term, &binary_info))
@@ -47,7 +47,7 @@ public:
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, const std::vector<T>& items) noexcept
     {
-        if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t> || std::is_same_v<T, std::byte>)
+        if constexpr ((std::is_integral_v<T> && sizeof(T) == 1) || std::is_same_v<T, std::byte>)
         {
             ErlNifBinary binary_info;
             enif_alloc_binary(items.size(), &binary_info);

@@ -292,9 +292,11 @@ png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
     png_write_end(png_ptr, NULL);
     png_destroy_write_struct(&png_ptr, &info_ptr);
 
-    return Ok(out_data);
+    return Ok(std::move(out_data));
 }
 
+
+static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
 
 #define JXL_ENSURE_SUCCESS(func, ...)                                                                                  \
     if (func(__VA_ARGS__) != 0)                                                                                        \
@@ -472,12 +474,13 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     else if (lossless)
         distance = 0;
     auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
-    JxlEncoderOptionsSetLossless(encoder_options, lossless);
-    JxlEncoderOptionsSetDistance(encoder_options, distance);
-    JxlEncoderOptionsSetEffort(encoder_options, effort);
+    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetLossless, encoder_options, lossless);
+    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetDistance, encoder_options, distance);
+    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetEffort, encoder_options, effort);
 
     JXL_ENSURE_SUCCESS(
         JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, sizeof(uint8_t) * pixels.size);
+    JxlEncoderCloseInput(enc.get());
 
     vector<uint8_t> compressed(64);
     uint8_t* next_out = compressed.data();
@@ -500,7 +503,44 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
         return Error("JxlEncoderProcessOutput failed"_binary);
     }
 
-    return Ok(compressed);
+    return Ok(std::move(compressed));
+}
+
+
+erl_result<vector<uint8_t>, binary> jxl_transcode_jpeg(const binary& jpeg_bytes, int effort)
+{
+    auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
+
+    JXL_ENSURE_SUCCESS(JxlEncoderUseContainer, enc.get(), JXL_TRUE);
+    JXL_ENSURE_SUCCESS(JxlEncoderStoreJPEGMetadata, enc.get(), JXL_TRUE);
+
+    auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
+    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetEffort, encoder_options, effort);
+    JXL_ENSURE_SUCCESS(JxlEncoderAddJPEGFrame, encoder_options, jpeg_bytes.data, jpeg_bytes.size);
+    JxlEncoderCloseInput(enc.get());
+
+    vector<uint8_t> compressed(64);
+    uint8_t* next_out = compressed.data();
+    size_t avail_out = compressed.size() - (next_out - compressed.data());
+    JxlEncoderStatus process_result;
+    while (true)
+    {
+        process_result = JxlEncoderProcessOutput(enc.get(), &next_out, &avail_out);
+        if (process_result != JXL_ENC_NEED_MORE_OUTPUT)
+            break;
+        size_t offset = next_out - compressed.data();
+        compressed.resize(compressed.size() * 2);
+        next_out = compressed.data() + offset;
+        avail_out = compressed.size() - offset;
+    }
+    compressed.resize(next_out - compressed.data());
+    if (process_result != JXL_ENC_SUCCESS)
+    {
+        printf("status: %d\n", process_result);
+        return Error("JxlEncoderProcessOutput failed"_binary);
+    }
+
+    return Ok(std::move(compressed));
 }
 
 
@@ -644,6 +684,7 @@ MODULE(
     def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
     def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
     def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
+    def(jxl_transcode_jpeg, "jxl_transcode_jpeg_impl", DirtyFlags::DirtyCpu),
     def(pdf_load_document, "pdf_load_document_impl", DirtyFlags::DirtyCpu),
     def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu),
     def(tiff_load_document, "tiff_load_document_impl", DirtyFlags::DirtyCpu),
