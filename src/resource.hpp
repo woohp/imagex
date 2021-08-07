@@ -33,7 +33,6 @@ public:
 
     static resource<T> alloc(const T& obj)
     {
-        assert(resource<T>::resource_type);
         T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource<T>::resource_type, sizeof(T)));
         *objp = obj;
         return resource<T> { objp };

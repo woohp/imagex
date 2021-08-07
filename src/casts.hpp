@@ -182,11 +182,11 @@ struct type_cast<bool>
 {
     static bool load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
-        char buf[6];
-        int bytes_read = enif_get_atom(env, term, buf, 6, ERL_NIF_LATIN1);
-        if (bytes_read == 5 && buf[0] == 't' && buf[1] == 'r' && buf[2] == 'u' && buf[3] == 'e')
+        char buf[8];
+        int bytes_read = enif_get_atom(env, term, buf, 8, ERL_NIF_LATIN1);
+        if (bytes_read == 5 && std::string_view(buf, 4) == "true")
             return true;
-        else if (bytes_read == 6 && buf[0] == 'f' && buf[1] == 'a' && buf[2] == 'l' && buf[3] == 's' && buf[4] == 'e')
+        else if (bytes_read == 6 && std::string_view(buf, 5) == "false")
             return false;
         else
             throw std::invalid_argument("not boolean");
@@ -333,10 +333,10 @@ struct type_cast<std::optional<T>>
 
         if (enif_is_atom(env, term))
         {
-            char buf[5];
-            if (enif_get_atom(env, term, buf, 5, ERL_NIF_LATIN1) != 4)
+            char buf[8];
+            if (enif_get_atom(env, term, buf, 8, ERL_NIF_LATIN1) != 4)
                 throw std::invalid_argument("not nil");
-            if (buf[0] != 'n' || buf[1] != 'i' || buf[2] != 'l')
+            if (std::string_view(buf, 3) != "nil")
                 throw std::invalid_argument("not nil");
             return std::nullopt;
         }
