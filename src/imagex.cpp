@@ -7,6 +7,8 @@
 #include <jpeglib.h>
 #include <jxl/encode.h>
 #include <jxl/encode_cxx.h>
+#include <jxl/resizable_parallel_runner.h>
+#include <jxl/resizable_parallel_runner_cxx.h>
 #include <jxl/thread_parallel_runner.h>
 #include <jxl/thread_parallel_runner_cxx.h>
 #include <memory>
@@ -354,12 +356,12 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
-    auto runner = JxlThreadParallelRunnerMake(nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
+    static auto runner = JxlResizableParallelRunnerMake(nullptr);
 
     auto dec = JxlDecoderMake(nullptr);
     JXL_ENSURE_SUCCESS(
         JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE);
-    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlThreadParallelRunner, runner.get());
+    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
 
     JxlPixelFormat format = { 3, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
 
@@ -393,9 +395,9 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
         else if (status == JXL_DEC_COLOR_ENCODING)
         {
             // Get the ICC color profile of the pixel data
-            size_t icc_size;
-            JXL_ENSURE_SUCCESS(
-                JxlDecoderGetICCProfileSize, dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, &icc_size);
+            // size_t icc_size;
+            // JXL_ENSURE_SUCCESS(
+            //     JxlDecoderGetICCProfileSize, dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, &icc_size);
             // icc_profile->resize(icc_size);
             // if (JxlDecoderGetColorAsICCProfile(
             //         dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, icc_profile->data(), icc_profile->size())
@@ -446,9 +448,10 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     bool lossless,
     int effort)
 {
-    auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
-    auto runner = JxlThreadParallelRunnerMake(
+    static auto runner = JxlThreadParallelRunnerMake(
         /*memory_manager=*/nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
+
+    auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     JXL_ENSURE_SUCCESS(JxlEncoderSetParallelRunner, enc.get(), JxlThreadParallelRunner, runner.get());
 
     JxlPixelFormat pixel_format = { channels, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
