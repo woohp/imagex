@@ -13,6 +13,8 @@
 #include <tuple>
 #include <variant>
 
+using namespace std::literals::string_view_literals;
+
 
 template <typename T>
 struct type_cast;
@@ -174,6 +176,11 @@ struct type_cast<atom>
     {
         return enif_make_atom_len(env, a.name.data(), a.name.length());
     }
+
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::string_view& s) noexcept
+    {
+        return enif_make_atom_len(env, s.data(), s.length());
+    }
 };
 
 
@@ -194,8 +201,8 @@ struct type_cast<bool>
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, bool b) noexcept
     {
-        static ERL_NIF_TERM true_atom_term = type_cast<atom>::handle(env, "true"_atom);
-        static ERL_NIF_TERM false_atom_term = type_cast<atom>::handle(env, "false"_atom);
+        static ERL_NIF_TERM true_atom_term = type_cast<atom>::handle(env, "true"sv);
+        static ERL_NIF_TERM false_atom_term = type_cast<atom>::handle(env, "false"sv);
         if (b)
             return true_atom_term;
         else
@@ -313,8 +320,8 @@ private:
 public:
     static ERL_NIF_TERM handle(ErlNifEnv* env, const erl_result_type& result) noexcept
     {
-        static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"_atom);
-        static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"_atom);
+        static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"sv);
+        static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"sv);
 
         if (result.index() == 0)
             return enif_make_tuple2(env, ok_atom_term, type_cast<OkType>::handle(env, std::get<0>(result)));
@@ -352,7 +359,7 @@ struct type_cast<std::optional<T>>
             return type_cast<T>::handle(env, *item);
         else
         {
-            static ERL_NIF_TERM nil_atom_term = type_cast<atom>::handle(env, "nil"_atom);
+            static ERL_NIF_TERM nil_atom_term = type_cast<atom>::handle(env, "nil"sv);
             return nil_atom_term;
         }
     }
