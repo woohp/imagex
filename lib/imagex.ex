@@ -26,13 +26,13 @@ defmodule Imagex do
     quality = Keyword.get(options, :quality, 75)
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
-    Imagex.C.jpeg_compress_impl(pixels, w, h, c, quality)
+    Imagex.C.jpeg_compress(pixels, w, h, c, quality)
   end
 
   def encode(image = %Nx.Tensor{}, :png, _options) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
-    Imagex.C.png_compress_impl(pixels, w, h, c)
+    Imagex.C.png_compress(pixels, w, h, c)
   end
 
   def encode(image = %Nx.Tensor{}, :jxl, options) do
@@ -60,7 +60,7 @@ defmodule Imagex do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
 
-    Imagex.C.jxl_compress_impl(
+    Imagex.C.jxl_compress(
       pixels,
       w,
       h,
@@ -91,13 +91,13 @@ defmodule Imagex do
   def decode(bytes, options \\ []) do
     case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf, :tiff]) do
       :jpeg ->
-        to_tensor(Imagex.C.jpeg_decompress_impl(bytes))
+        to_tensor(Imagex.C.jpeg_decompress(bytes))
 
       :png ->
-        to_tensor(Imagex.C.png_decompress_impl(bytes))
+        to_tensor(Imagex.C.png_decompress(bytes))
 
       :jxl ->
-        to_tensor(Imagex.C.jxl_decompress_impl(bytes))
+        to_tensor(Imagex.C.jxl_decompress(bytes))
 
       :ppm ->
         Imagex.PPM.decode(bytes)
@@ -106,13 +106,13 @@ defmodule Imagex do
         Imagex.BMP.decode(bytes)
 
       :pdf ->
-        case Imagex.C.pdf_load_document_impl(bytes) do
+        case Imagex.C.pdf_load_document(bytes) do
           {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
           error -> error
         end
 
       :tiff ->
-        case Imagex.C.tiff_load_document_impl(bytes) do
+        case Imagex.C.tiff_load_document(bytes) do
           {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
           error -> error
         end

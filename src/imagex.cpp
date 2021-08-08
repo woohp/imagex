@@ -507,7 +507,7 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
 }
 
 
-erl_result<vector<uint8_t>, binary> jxl_transcode_jpeg(const binary& jpeg_bytes, int effort)
+erl_result<vector<uint8_t>, binary> jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
 
@@ -678,14 +678,14 @@ MODULE(
     load,
     nullptr,
     nullptr,
-    def(jpeg_decompress, "jpeg_decompress_impl", DirtyFlags::DirtyCpu),
-    def(jpeg_compress, "jpeg_compress_impl", DirtyFlags::DirtyCpu),
-    def(png_decompress, "png_decompress_impl", DirtyFlags::DirtyCpu),
-    def(png_compress, "png_compress_impl", DirtyFlags::DirtyCpu),
-    def(jxl_decompress, "jxl_decompress_impl", DirtyFlags::DirtyCpu),
-    def(jxl_compress, "jxl_compress_impl", DirtyFlags::DirtyCpu),
-    def(jxl_transcode_jpeg, "jxl_transcode_jpeg_impl", DirtyFlags::DirtyCpu),
-    def(pdf_load_document, "pdf_load_document_impl", DirtyFlags::DirtyCpu),
-    def(pdf_render_page, "pdf_render_page_impl", DirtyFlags::DirtyCpu),
-    def(tiff_load_document, "tiff_load_document_impl", DirtyFlags::DirtyCpu),
-    def(tiff_render_page, "tiff_render_page_impl", DirtyFlags::DirtyCpu), )
+    def(jpeg_decompress, DirtyFlags::DirtyCpu),
+    def(jpeg_compress, DirtyFlags::DirtyCpu),
+    def(png_decompress, DirtyFlags::DirtyCpu),
+    def(png_compress, DirtyFlags::DirtyCpu),
+    def(jxl_decompress, DirtyFlags::DirtyCpu),
+    def(jxl_compress, DirtyFlags::DirtyCpu),
+    def(jxl_transcode_from_jpeg, DirtyFlags::DirtyCpu),
+    def(pdf_load_document, DirtyFlags::DirtyCpu),
+    def(pdf_render_page, DirtyFlags::DirtyCpu),
+    def(tiff_load_document, DirtyFlags::DirtyCpu),
+    def(tiff_render_page, DirtyFlags::DirtyCpu), )

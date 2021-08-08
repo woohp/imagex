@@ -103,7 +103,7 @@ defmodule ImagexTest do
 
     # do a roundtrip conversion: jpeg -> jxl -> pixels
     # check that pixels ~= jpeg pixels, (almost equals b/c jxl might decode a bit differently)
-    {:ok, jxl_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes)
+    {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
     assert byte_size(jxl_bytes) < byte_size(jpeg_bytes)
 
     {:ok, image_from_jxl} = Imagex.decode(jxl_bytes, format: :jxl)
@@ -123,8 +123,8 @@ defmodule ImagexTest do
   test "jpeg-xl transcode from jpeg with different efforts" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
 
-    {:ok, low_effort_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes, effort: 3)
-    {:ok, high_effort_bytes} = Imagex.Jxl.transcode_jpeg(jpeg_bytes, effort: 9)
+    {:ok, low_effort_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, effort: 3)
+    {:ok, high_effort_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, effort: 9)
 
     assert byte_size(high_effort_bytes) < byte_size(low_effort_bytes)
   end

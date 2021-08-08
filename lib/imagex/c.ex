@@ -14,47 +14,47 @@ defmodule Imagex.C do
     :ok = :erlang.load_nif(path, 0)
   end
 
-  def jpeg_decompress_impl(_bytes) do
+  def jpeg_decompress(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def jpeg_compress_impl(_pixels, _width, _height, _channels, _quality) do
+  def jpeg_compress(_pixels, _width, _height, _channels, _quality) do
     exit(:nif_library_not_loaded)
   end
 
-  def png_decompress_impl(_bytes) do
+  def png_decompress(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def png_compress_impl(_pixels, _width, _height, _channels) do
+  def png_compress(_pixels, _width, _height, _channels) do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_decompress_impl(_bytes) do
+  def jxl_decompress(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_compress_impl(_pixels, _width, _height, _channels, _distance, _lossless, _effort) do
+  def jxl_compress(_pixels, _width, _height, _channels, _distance, _lossless, _effort) do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_transcode_jpeg_impl(_jpeg_bytes, _effort) do
+  def jxl_transcode_from_jpeg(_jpeg_bytes, _effort) do
     exit(:nif_library_not_loaded)
   end
 
-  def pdf_load_document_impl(_bytes) do
+  def pdf_load_document(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def pdf_render_page_impl(_document, _page_idx, _dpi) do
+  def pdf_render_page(_document, _page_idx, _dpi) do
     exit(:nif_library_not_loaded)
   end
 
-  def tiff_load_document_impl(_bytes) do
+  def tiff_load_document(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
-  def tiff_render_page_impl(_document, _page_idx) do
+  def tiff_render_page(_document, _page_idx) do
     exit(:nif_library_not_loaded)
   end
 end
