@@ -544,24 +544,21 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_from_jpeg(const binary& jpeg_b
 }
 
 
-void delete_poppler_document(ErlNifEnv* caller_env, void* obj)
+struct TIFFWrapper
 {
-    auto document_p = reinterpret_cast<poppler::document**>(obj);
-    delete *document_p;
-    *document_p = nullptr;
-}
+    TIFF* tiff;
+    stringstream* sstream;
+
+    ~TIFFWrapper()
+    {
+        TIFFClose(this->tiff);
+        delete this->sstream;
+    }
+};
 
 
-void delete_tiff_document(ErlNifEnv* caller_env, void* obj)
-{
-    auto document_p = reinterpret_cast<pair<TIFF*, stringstream*>*>(obj);
-    TIFFClose(document_p->first);
-    delete document_p->second;
-}
-
-
-typedef resource<poppler::document*> pdf_resource_t;
-typedef resource<pair<TIFF*, stringstream*>> tiff_resource_t;
+typedef resource<std::unique_ptr<poppler::document>> pdf_resource_t;
+typedef resource<TIFFWrapper> tiff_resource_t;
 
 
 erl_result<tuple<pdf_resource_t, int>, binary> pdf_load_document(binary bytes)
@@ -577,17 +574,15 @@ erl_result<tuple<pdf_resource_t, int>, binary> pdf_load_document(binary bytes)
         return Error("document is locked"_binary);
     }
 
-    auto document_resource = pdf_resource_t::alloc(document);
-    auto num_pages = document->pages();
-
-    return Ok(make_tuple(document_resource, num_pages));
+    const auto num_pages = document->pages();
+    return Ok(make_tuple(pdf_resource_t::alloc(document), num_pages));
 }
 
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
 pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 {
-    auto document = document_resource.get();
+    auto& document = document_resource.get();
     if (page_idx < 0 || page_idx >= document->pages())
         throw std::invalid_argument("page index out of range");
 
@@ -631,22 +626,20 @@ erl_result<tuple<tiff_resource_t, int>, binary> tiff_load_document(binary bytes)
     if (!document)
         return Error("invalid tiff file"_binary);
 
-    auto document_resource = tiff_resource_t::alloc({ document, sstream });
-
     int num_pages = 0;
     do
     {
         num_pages++;
     } while (TIFFReadDirectory(document));
 
-    return Ok(make_tuple(document_resource, num_pages));
+    return Ok(make_tuple(tiff_resource_t::alloc(document, sstream), num_pages));
 }
 
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
 tiff_render_page(tiff_resource_t document_resource, int page_index)
 {
-    auto [document, _] = document_resource.get();
+    auto& [document, _] = document_resource.get();
 
     TIFFSetDirectory(document, page_index);
 
@@ -663,10 +656,8 @@ tiff_render_page(tiff_resource_t document_resource, int page_index)
 
 int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
-    pdf_resource_t::resource_type
-        = enif_open_resource_type(caller_env, nullptr, "poppler", delete_poppler_document, ERL_NIF_RT_CREATE, nullptr);
-    tiff_resource_t::resource_type
-        = enif_open_resource_type(caller_env, nullptr, "tiff", delete_tiff_document, ERL_NIF_RT_CREATE, nullptr);
+    pdf_resource_t::init(caller_env, "poppler");
+    tiff_resource_t::init(caller_env, "tiff");
     TIFFSetWarningHandler(nullptr);
 
     return 0;

@@ -22,6 +22,16 @@ private:
     friend struct type_cast<atom>;
 
 public:
+    bool operator==(const std::string_view sv) const
+    {
+        return this->name == sv;
+    }
+
+    bool operator!=(const std::string_view sv) const
+    {
+        return this->name != sv;
+    }
+
     bool operator==(const atom& other) const
     {
         return this->name == other.name;

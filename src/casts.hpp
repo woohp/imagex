@@ -376,8 +376,8 @@ struct type_cast<resource<T>>
 
     static ERL_NIF_TERM handle(ErlNifEnv* env, const resource<T>& res)
     {
-        const auto document_term = enif_make_resource(env, res.objp);
+        const auto term = enif_make_resource(env, res.objp);
         enif_release_resource(res.objp);
-        return document_term;
+        return term;
     }
 };

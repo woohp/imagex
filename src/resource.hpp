@@ -24,6 +24,11 @@ class resource
     { }
 
 public:
+    typedef T type;
+
+    resource(const resource<T>&) = delete;
+    resource(resource<T>&&) = default;
+
     T& get()
     {
         if (!enif_get_resource(env, term, resource<T>::resource_type, &this->objp))
@@ -31,11 +36,22 @@ public:
         return *reinterpret_cast<T*>(this->objp);
     }
 
-    static resource<T> alloc(const T& obj)
+    template <typename... Args>
+    static resource<T> alloc(Args&&... args)
     {
-        T* objp = reinterpret_cast<T*>(enif_alloc_resource(resource<T>::resource_type, sizeof(T)));
-        *objp = obj;
-        return resource<T> { objp };
+        void* buf = enif_alloc_resource(resource<T>::resource_type, sizeof(T));
+        return resource<T> { new (buf) T { std::forward<Args>(args)... } };
+    }
+
+    static void init(ErlNifEnv* env, const char* name)
+    {
+        resource<T>::resource_type
+            = enif_open_resource_type(env, nullptr, name, resource<T>::destructor, ERL_NIF_RT_CREATE, nullptr);
+    }
+
+    static void destructor(ErlNifEnv*, void* objp)
+    {
+        reinterpret_cast<T*>(objp)->~T();
     }
 
     static ErlNifResourceType* resource_type;
