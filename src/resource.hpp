@@ -29,11 +29,12 @@ public:
     resource(const resource<T>&) = delete;
     resource(resource<T>&&) = default;
 
-    T& get()
+    template <typename U = T>
+    U& get()
     {
         if (!enif_get_resource(env, term, resource<T>::resource_type, &this->objp))
             throw std::invalid_argument("invalid resource");
-        return *reinterpret_cast<T*>(this->objp);
+        return *reinterpret_cast<U*>(this->objp);
     }
 
     template <typename... Args>

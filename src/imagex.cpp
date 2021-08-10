@@ -2,6 +2,7 @@
 #include "jxl/decode.h"
 #include "jxl/decode_cxx.h"
 #include "stl.hpp"
+#include "yielding.hpp"
 #include <erl_nif.h>
 #include <iostream>
 #include <jpeglib.h>
@@ -31,25 +32,27 @@ void jpeg_error_exit(j_common_ptr cinfo)
 {
     char error_message[JMSG_LENGTH_MAX];
     (*(cinfo->err->format_message))(cinfo, error_message);
-    throw runtime_error(error_message);
+    throw erl_error<string>(error_message);
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(const binary& jpeg_bytes) noexcept
+yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>>
+jpeg_decompress(std::vector<uint8_t> jpeg_bytes) noexcept
 {
     struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
-
-    // create decompressor
-    cinfo.err = jpeg_std_error(&err);
-    jpeg_create_decompress(&cinfo);
-    cinfo.do_fancy_upsampling = FALSE;
-    err.error_exit = jpeg_error_exit;
+    yielding_timer timer;
 
     try
     {
+        // create decompressor
+        cinfo.err = jpeg_std_error(&err);
+        jpeg_create_decompress(&cinfo);
+        cinfo.do_fancy_upsampling = FALSE;
+        err.error_exit = jpeg_error_exit;
+
         // set source buffer
-        jpeg_mem_src(&cinfo, jpeg_bytes.data, jpeg_bytes.size);
+        jpeg_mem_src(&cinfo, jpeg_bytes.data(), jpeg_bytes.size());
 
         // read jpeg header
         jpeg_read_header(&cinfo, TRUE);
@@ -65,30 +68,35 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
         {
             auto row_ptr = output.data + cinfo.output_scanline * row_stride;
             jpeg_read_scanlines(&cinfo, &row_ptr, 1);
+
+            if (timer.times_up())
+            {
+                co_yield nullopt;
+                timer.reset();
+            }
         }
 
         // clean up
         jpeg_finish_decompress(&cinfo);
         jpeg_destroy_decompress(&cinfo);
-        return Ok(
-            make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
+        co_yield Ok(make_tuple(
+            move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
     }
-    catch (runtime_error& e)
+    catch (erl_error<string>& e)
     {
         jpeg_destroy_decompress(&cinfo);
-        return Error<string>(e.what());
+        throw e;
     }
 }
 
 
-erl_result<binary, string>
-jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
+yielding<erl_result<binary, string>>
+jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, int quality) noexcept
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
+    yielding_timer timer;
 
-    uint8_t* buf = nullptr;
-    unsigned long outsize = 0;
     try
     {
         // create the compressor
@@ -96,6 +104,8 @@ jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t ch
         jpeg_create_compress(&cinfo);
         err.error_exit = jpeg_error_exit;
 
+        uint8_t* buf = nullptr;
+        unsigned long outsize = 0;
         jpeg_mem_dest(&cinfo, &buf, &outsize);
 
         cinfo.image_width = width;
@@ -110,39 +120,47 @@ jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t ch
         jpeg_start_compress(&cinfo, TRUE);
         while (cinfo.next_scanline < cinfo.image_height)
         {
-            auto row = pixels.data + cinfo.next_scanline * channels * width;
+            auto row = pixels.data() + cinfo.next_scanline * channels * width;
             jpeg_write_scanlines(&cinfo, &row, 1);
+
+            if (timer.times_up())
+            {
+                co_yield nullopt;
+                timer.reset();
+            }
         }
         jpeg_finish_compress(&cinfo);
+
         jpeg_destroy_compress(&cinfo);
+
+        // copy the buf to a binary objet
+        binary out { size_t(outsize) };
+        std::copy_n(buf, outsize, out.data);
+
+        free(buf);  // free the buf created by jpeg_mem_dest
+
+        co_yield Ok(std::move(out));
     }
-    catch (runtime_error& e)
+    catch (erl_error<string>& e)
     {
-        return Error<string>(e.what());
+        jpeg_destroy_compress(&cinfo);
+        throw e;
     }
-
-    // copy the buf to a binary objet
-    binary out { size_t(outsize) };
-    std::copy_n(buf, outsize, out.data);
-
-    free(buf);  // free the buf created by jpeg_mem_dest
-
-    return Ok(std::move(out));
 }
 
 
 struct png_read_binary
 {
-    const binary& data;
+    const vector<uint8_t>& data;
     size_t offset = 8;
 
-    png_read_binary(const binary& data)
+    png_read_binary(const vector<uint8_t>& data)
         : data(data)
     { }
 
     void read(png_bytep dest, png_size_t size_to_read)
     {
-        std::copy_n(this->data.data + offset, size_to_read, dest);
+        std::copy_n(this->data.data() + offset, size_to_read, dest);
         this->offset += size_to_read;
     }
 };
@@ -150,23 +168,34 @@ struct png_read_binary
 
 void png_error_exit(png_structp png_ptr, const char* error_message)
 {
-    throw runtime_error(error_message);
+    throw erl_error<string>(error_message);
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(const binary& png_bytes)
+yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>> png_decompress(vector<uint8_t> png_bytes)
 {
+    yielding_timer timer;
+
     // check png signature
-    if (png_sig_cmp(png_bytes.data, 0, 8))
-        return Error("invalid png header"s);
+    if (png_sig_cmp(png_bytes.data(), 0, 8))
+    {
+        co_yield Error("invalid png header"s);
+        co_return;
+    }
 
     png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
-        return Error("couldn't initialize png read struct"s);
+    {
+        co_yield Error("couldn't initialize png read struct"s);
+        co_return;
+    }
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("couldn't initialize png info struct"s);
+    {
+        co_yield Error("couldn't initialize png info struct"s);
+        co_return;
+    }
 
     try
     {
@@ -182,11 +211,12 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
         png_set_sig_bytes(png_ptr, 8);
         png_read_info(png_ptr, info_ptr);
 
-        png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
-        png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
+        const png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
+        const png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
         png_uint_32 bit_depth = png_get_bit_depth(png_ptr, info_ptr);
         png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
-        png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
+        const png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
+        const auto interlace_type = png_get_interlace_type(png_ptr, info_ptr);
 
         switch (color_type)
         {
@@ -201,39 +231,67 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(c
             break;
         }
 
-        // set up the row pointers, which png_read_image requires
-        auto row_pointers = make_unique<png_bytep[]>(height);
         const unsigned int stride = width * bit_depth * channels / 8;
         binary output(height * stride);
-        for (size_t i = 0; i < height; i++)
-            row_pointers[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
 
-        png_read_image(png_ptr, row_pointers.get());
+        // Depending on whether the image is interlaced, we need to decode multiple passes
+        // See https://github.com/glennrp/libpng/blob/libpng16/libpng-manual.txt and
+        // libpng png_read_image's implementation
+        int num_passes = 1;
+
+        // if interlaced, we need to get the number of passes
+        if (interlace_type == PNG_INTERLACE_ADAM7)
+        {
+            num_passes = png_set_interlace_handling(png_ptr);
+            png_start_read_image(png_ptr);
+        }
+
+        for (int pass = 0; pass < num_passes; pass++)
+        {
+            for (size_t i = 0; i < height; i++)
+            {
+                png_read_row(png_ptr, reinterpret_cast<png_bytep>(output.data) + i * stride, nullptr);
+
+                if (timer.times_up())
+                {
+                    co_yield nullopt;
+                    timer.reset();
+                }
+            }
+        }
 
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        return Ok(make_tuple(std::move(output), width, height, channels));
+        co_yield Ok(make_tuple(std::move(output), width, height, channels));
     }
-    catch (runtime_error& e)
+    catch (erl_error<string>& e)
     {
         if (png_ptr)
             png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-        return Error<string>(e.what());
+        throw e;
     }
 }
 
 
-erl_result<vector<png_byte>, string>
-png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+yielding<erl_result<vector<png_byte>, string>>
+png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels)
 {
+    yielding_timer timer;
+
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
-        return Error("couldn't initialize png write struct"s);
+    {
+        co_yield Error("couldn't initialize png write struct"s);
+        co_return;
+    }
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("[write_png_file] png_create_info_struct failed"s);
+    {
+        co_yield Error("[write_png_file] png_create_info_struct failed"s);
+        co_return;
+    }
 
     try
     {
@@ -259,24 +317,30 @@ png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t cha
         png_write_info(png_ptr, info_ptr);
 
         // write the pixels
-        auto row_pointers = make_unique<png_bytep[]>(height);
         const unsigned int stride = width * channels;
         for (size_t i = 0; i < height; i++)
-            row_pointers[i] = reinterpret_cast<png_bytep>(pixels.data + i * stride);
-        png_write_image(png_ptr, row_pointers.get());
+        {
+            png_write_row(png_ptr, pixels.data() + i * stride);
+
+            if (timer.times_up())
+            {
+                co_yield nullopt;
+                timer.reset();
+            }
+        }
 
         // cleanup
         png_write_end(png_ptr, nullptr);
         png_destroy_write_struct(&png_ptr, &info_ptr);
         png_ptr = nullptr;
 
-        return Ok(std::move(out_data));
+        co_yield Ok(move(out_data));
     }
-    catch (runtime_error& e)
+    catch (erl_error<string>& e)
     {
         if (png_ptr)
             png_destroy_write_struct(&png_ptr, &info_ptr);
-        return Error<string>(e.what());
+        throw e;
     }
 }
 
@@ -632,6 +696,7 @@ int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
     pdf_resource_t::init(caller_env, "poppler");
     tiff_resource_t::init(caller_env, "tiff");
+    generator_resource_t::init(caller_env, "generator");
     TIFFSetWarningHandler(nullptr);
 
     return 0;

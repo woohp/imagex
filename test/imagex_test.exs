@@ -69,11 +69,10 @@ defmodule ImagexTest do
     assert image.shape == {512, 512, 3}
   end
 
-  test "encode image to jpeg-xl" do
+  test "encode image to jpeg-xl", %{image: test_image} do
     png_bytes = File.read!("test/assets/lena.png")
-    {:ok, image} = Imagex.decode(png_bytes, format: :png)
 
-    {:ok, compressed_bytes} = Imagex.encode(image, :jxl)
+    {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl)
     assert byte_size(compressed_bytes) < byte_size(png_bytes)
   end
 
