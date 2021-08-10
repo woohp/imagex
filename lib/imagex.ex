@@ -8,11 +8,6 @@ defmodule Imagex do
     {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
   end
 
-  defp to_tensor({:ok, {pixels, width, height, channels, _auxiliary}}) do
-    {:ok, tensor} = to_tensor({:ok, {pixels, width, height, channels}})
-    {:ok, tensor}
-  end
-
   defp to_tensor({:error, _error_msg} = output) do
     output
   end
