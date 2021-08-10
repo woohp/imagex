@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <erl_nif.h>
 
 

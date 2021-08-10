@@ -30,7 +30,7 @@ struct erl_error : erl_error_base
 };
 
 
-template <typename OkType>
+template <std::move_constructible OkType>
 struct Ok
 {
     OkType value;
@@ -41,7 +41,7 @@ struct Ok
 };
 
 
-template <typename ErrorType>
+template <std::move_constructible ErrorType>
 struct Error
 {
     ErrorType value;
@@ -52,7 +52,7 @@ struct Error
 };
 
 
-template <typename OkType, typename ErrorType>
+template <std::move_constructible OkType, std::move_constructible ErrorType>
 struct erl_result : std::variant<OkType, ErrorType>
 {
     constexpr erl_result(Ok<OkType> ok_value)
