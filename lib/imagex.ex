@@ -42,7 +42,9 @@ defmodule Imagex do
 
     effort =
       case Keyword.get(options, :effort, 7) do
-        value when value in 3..9 -> value
+        value when value in 1..9 -> value
+        :lightning -> 1
+        :thunder -> 2
         :falcon -> 3
         :cheetah -> 4
         :hare -> 5

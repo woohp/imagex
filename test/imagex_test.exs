@@ -98,6 +98,15 @@ defmodule ImagexTest do
     end
   end
 
+  test "encode jpeg-xl with different efforts", %{image: test_image} do
+    compressed_sizes = for effort <- 1..9 do
+      {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, effort: effort)
+      byte_size(compressed_bytes)
+    end
+
+    assert List.last(compressed_sizes) < List.first(compressed_sizes)
+  end
+
   test "jpeg-xl transcode from jpeg" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
 

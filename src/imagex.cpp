@@ -81,11 +81,8 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(
     /* clean up */
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
-    return Ok(make_tuple(
-        move(output),
-        cinfo.output_width,
-        cinfo.output_height,
-        static_cast<uint32_t>(cinfo.num_components)));
+    return Ok(
+        make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
 }
 
 
@@ -286,6 +283,7 @@ static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
 JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format)
 {
     JxlBasicInfo basic_info;
+    JxlEncoderInitBasicInfo(&basic_info);
 
     switch (pixel_format.data_type)
     {
