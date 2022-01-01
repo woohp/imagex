@@ -18,61 +18,61 @@ defmodule Imagex do
   def encode(image, format, options \\ [])
 
   def encode(image = %Nx.Tensor{}, :jpeg, options) do
-    quality = Keyword.get(options, :quality, 75)
-    pixels = Nx.to_binary(image)
-    {h, w, c} = standardize_shape(image.shape)
-    Imagex.C.jpeg_compress(pixels, w, h, c, quality)
+    with {:ok, options} <- Keyword.validate(options, quality: 75) do
+      quality = Keyword.get(options, :quality)
+      pixels = Nx.to_binary(image)
+      {h, w, c} = standardize_shape(image.shape)
+      Imagex.C.jpeg_compress(pixels, w, h, c, quality)
+    else
+      error -> error
+    end
   end
 
-  def encode(image = %Nx.Tensor{}, :png, _options) do
+  def encode(image = %Nx.Tensor{}, :png, []) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
     Imagex.C.png_compress(pixels, w, h, c)
   end
 
   def encode(image = %Nx.Tensor{}, :jxl, options) do
-    # + 0.0 to convert any integer to float
-    distance =
-      case Keyword.get(options, :distance, 1.0) do
-        value when 0 <= value and value <= 15 -> value
-      end + 0.0
+    with {:ok, options} <- Keyword.validate(options, distance: 1.0, lossless: false, effort: 7) do
+      # + 0.0 to convert any integer to float
+      distance =
+        case Keyword.get(options, :distance) do
+          value when 0 <= value and value <= 15 -> value
+        end + 0.0
 
-    # the config variable must be boolean, but the impl expects an integer
-    lossless = Keyword.get(options, :lossless, false)
+      # the config variable must be boolean, but the impl expects an integer
+      lossless = Keyword.get(options, :lossless)
 
-    effort =
-      case Keyword.get(options, :effort, 7) do
-        value when value in 1..9 -> value
-        :lightning -> 1
-        :thunder -> 2
-        :falcon -> 3
-        :cheetah -> 4
-        :hare -> 5
-        :wombat -> 6
-        :squirrel -> 7
-        :kitten -> 8
-        :tortoise -> 9
-      end
+      effort =
+        case Keyword.get(options, :effort) do
+          value when value in 1..9 -> value
+          :lightning -> 1
+          :thunder -> 2
+          :falcon -> 3
+          :cheetah -> 4
+          :hare -> 5
+          :wombat -> 6
+          :squirrel -> 7
+          :kitten -> 8
+          :tortoise -> 9
+        end
 
-    pixels = Nx.to_binary(image)
-    {h, w, c} = standardize_shape(image.shape)
+      pixels = Nx.to_binary(image)
+      {h, w, c} = standardize_shape(image.shape)
 
-    Imagex.C.jxl_compress(
-      pixels,
-      w,
-      h,
-      c,
-      distance,
-      lossless,
-      effort
-    )
+      Imagex.C.jxl_compress(pixels, w, h, c, distance, lossless, effort)
+    else
+      error -> error
+    end
   end
 
-  def encode(image = %Nx.Tensor{}, :ppm, _options) do
+  def encode(image = %Nx.Tensor{}, :ppm, []) do
     Imagex.PPM.encode(image)
   end
 
-  def encode(image = %Nx.Tensor{}, :bmp, _options) do
+  def encode(image = %Nx.Tensor{}, :bmp, []) do
     Imagex.BMP.encode(image)
   end
 
@@ -86,36 +86,40 @@ defmodule Imagex do
   end
 
   def decode(bytes, options \\ []) do
-    case Keyword.get(options, :format, [:jpeg, :png, :jxl, :ppm, :bmp, :pdf, :tiff]) do
-      :jpeg ->
-        to_tensor(Imagex.C.jpeg_decompress(bytes))
+    with {:ok, options} <- Keyword.validate(options, format: [:jpeg, :png, :jxl, :ppm, :bmp, :pdf, :tiff]) do
+      case Keyword.get(options, :format) do
+        :jpeg ->
+          to_tensor(Imagex.C.jpeg_decompress(bytes))
 
-      :png ->
-        to_tensor(Imagex.C.png_decompress(bytes))
+        :png ->
+          to_tensor(Imagex.C.png_decompress(bytes))
 
-      :jxl ->
-        to_tensor(Imagex.C.jxl_decompress(bytes))
+        :jxl ->
+          to_tensor(Imagex.C.jxl_decompress(bytes))
 
-      :ppm ->
-        Imagex.PPM.decode(bytes)
+        :ppm ->
+          Imagex.PPM.decode(bytes)
 
-      :bmp ->
-        Imagex.BMP.decode(bytes)
+        :bmp ->
+          Imagex.BMP.decode(bytes)
 
-      :pdf ->
-        case Imagex.C.pdf_load_document(bytes) do
-          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
-          error -> error
-        end
+        :pdf ->
+          case Imagex.C.pdf_load_document(bytes) do
+            {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
+            error -> error
+          end
 
-      :tiff ->
-        case Imagex.C.tiff_load_document(bytes) do
-          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
-          error -> error
-        end
+        :tiff ->
+          case Imagex.C.tiff_load_document(bytes) do
+            {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
+            error -> error
+          end
 
-      formats when is_list(formats) ->
-        decode_multi(bytes, formats)
+        formats when is_list(formats) ->
+          decode_multi(bytes, formats)
+      end
+    else
+      error -> error
     end
   end
 
