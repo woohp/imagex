@@ -124,7 +124,7 @@ defmodule ImagexTest do
     )
     |> Nx.abs()
     |> Nx.reduce_max()
-    |> Nx.to_scalar()
+    |> Nx.to_number()
 
     assert max_diff <= 20
   end
