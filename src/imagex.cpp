@@ -27,105 +27,99 @@
 using namespace std;
 
 
-struct my_jpeg_error_mgr : jpeg_error_mgr
-{
-    jmp_buf setjmp_buffer;
-};
-
-
 void jpeg_error_exit(j_common_ptr cinfo)
 {
-    auto myerr = reinterpret_cast<my_jpeg_error_mgr*>(cinfo->err);
-    longjmp(myerr->setjmp_buffer, 1);
+    char error_message[JMSG_LENGTH_MAX];
+    (*(cinfo->err->format_message))(cinfo, error_message);
+    throw runtime_error(error_message);
 }
 
 
 erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> jpeg_decompress(const binary& jpeg_bytes) noexcept
 {
-    struct my_jpeg_error_mgr err;
+    struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
 
-    /* create decompressor */
+    // create decompressor
     cinfo.err = jpeg_std_error(&err);
     jpeg_create_decompress(&cinfo);
     cinfo.do_fancy_upsampling = FALSE;
     err.error_exit = jpeg_error_exit;
 
-    if (setjmp(err.setjmp_buffer))
+    try
     {
-        char error_message[JMSG_LENGTH_MAX];
-        (*(cinfo.err->format_message))(reinterpret_cast<j_common_ptr>(&cinfo), error_message);
+        // set source buffer
+        jpeg_mem_src(&cinfo, jpeg_bytes.data, jpeg_bytes.size);
+
+        // read jpeg header
+        jpeg_read_header(&cinfo, TRUE);
+
+        // decompress
+        jpeg_start_decompress(&cinfo);
+        unsigned output_bytes = cinfo.output_width * cinfo.output_height * cinfo.num_components;
+        binary output(output_bytes);
+
+        // read scanlines
+        const auto row_stride = cinfo.output_width * cinfo.num_components;
+        while (cinfo.output_scanline < cinfo.output_height)
+        {
+            auto row_ptr = output.data + cinfo.output_scanline * row_stride;
+            jpeg_read_scanlines(&cinfo, &row_ptr, 1);
+        }
+
+        // clean up
+        jpeg_finish_decompress(&cinfo);
         jpeg_destroy_decompress(&cinfo);
-        return Error<string>(error_message);
+        return Ok(
+            make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
     }
-
-    /* set source buffer */
-    jpeg_mem_src(&cinfo, jpeg_bytes.data, jpeg_bytes.size);
-
-    /* read jpeg header */
-    jpeg_read_header(&cinfo, TRUE);
-
-    /* decompress */
-    jpeg_start_decompress(&cinfo);
-    unsigned output_bytes = cinfo.output_width * cinfo.output_height * cinfo.num_components;
-    binary output(output_bytes);
-
-    /* read scanlines */
-    const auto row_stride = cinfo.output_width * cinfo.num_components;
-    while (cinfo.output_scanline < cinfo.output_height)
+    catch (runtime_error& e)
     {
-        auto row_ptr = output.data + cinfo.output_scanline * row_stride;
-        jpeg_read_scanlines(&cinfo, &row_ptr, 1);
+        jpeg_destroy_decompress(&cinfo);
+        return Error<string>(e.what());
     }
-
-    /* clean up */
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
-    return Ok(
-        make_tuple(move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
 }
 
 
 erl_result<binary, string>
 jpeg_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
 {
-    struct my_jpeg_error_mgr err;
+    struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
-
-    // create the compressor
-    cinfo.err = jpeg_std_error(&err);
-    jpeg_create_compress(&cinfo);
-    err.error_exit = jpeg_error_exit;
-
-    if (setjmp(err.setjmp_buffer))
-    {
-        char error_message[JMSG_LENGTH_MAX];
-        (*(cinfo.err->format_message))(reinterpret_cast<j_common_ptr>(&cinfo), error_message);
-        jpeg_destroy_compress(&cinfo);
-        return Error<string>(error_message);
-    }
 
     uint8_t* buf = nullptr;
     unsigned long outsize = 0;
-    jpeg_mem_dest(&cinfo, &buf, &outsize);
-
-    cinfo.image_width = width;
-    cinfo.image_height = height;
-    cinfo.input_components = channels;
-    cinfo.in_color_space = JCS_RGB;
-
-    jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, quality, TRUE);
-
-    // do the actual compression
-    jpeg_start_compress(&cinfo, TRUE);
-    while (cinfo.next_scanline < cinfo.image_height)
+    try
     {
-        auto row = pixels.data + cinfo.next_scanline * channels * width;
-        jpeg_write_scanlines(&cinfo, &row, 1);
+        // create the compressor
+        cinfo.err = jpeg_std_error(&err);
+        jpeg_create_compress(&cinfo);
+        err.error_exit = jpeg_error_exit;
+
+        jpeg_mem_dest(&cinfo, &buf, &outsize);
+
+        cinfo.image_width = width;
+        cinfo.image_height = height;
+        cinfo.input_components = channels;
+        cinfo.in_color_space = JCS_RGB;
+
+        jpeg_set_defaults(&cinfo);
+        jpeg_set_quality(&cinfo, quality, TRUE);
+
+        // do the actual compression
+        jpeg_start_compress(&cinfo, TRUE);
+        while (cinfo.next_scanline < cinfo.image_height)
+        {
+            auto row = pixels.data + cinfo.next_scanline * channels * width;
+            jpeg_write_scanlines(&cinfo, &row, 1);
+        }
+        jpeg_finish_compress(&cinfo);
+        jpeg_destroy_compress(&cinfo);
     }
-    jpeg_finish_compress(&cinfo);
-    jpeg_destroy_compress(&cinfo);
+    catch (runtime_error& e)
+    {
+        return Error<string>(e.what());
+    }
 
     // copy the buf to a binary objet
     binary out { size_t(outsize) };
