@@ -297,14 +297,6 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
         basic_info.bits_per_sample = 16;
         basic_info.exponent_bits_per_sample = 0;
         break;
-    case JXL_TYPE_UINT32:
-        basic_info.bits_per_sample = 32;
-        basic_info.exponent_bits_per_sample = 0;
-        break;
-    case JXL_TYPE_BOOLEAN:
-        basic_info.bits_per_sample = 1;
-        basic_info.exponent_bits_per_sample = 0;
-        break;
     }
 
     if (pixel_format.num_channels == 2 || pixel_format.num_channels == 4)
@@ -439,14 +431,10 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     JxlColorEncodingSetToSRGB(&color_encoding, is_grayscale);
     JXL_ENSURE_SUCCESS(JxlEncoderSetColorEncoding, enc.get(), &color_encoding);
 
-    if (distance == 0)
-        lossless = true;
-    else if (lossless)
-        distance = 0;
-    auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
-    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetLossless, encoder_options, lossless);
-    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetDistance, encoder_options, distance);
-    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetEffort, encoder_options, effort);
+    auto encoder_options = JxlEncoderFrameSettingsCreate(enc.get(), nullptr);
+    JXL_ENSURE_SUCCESS(JxlEncoderSetFrameLossless, encoder_options, lossless);
+    JXL_ENSURE_SUCCESS(JxlEncoderSetFrameDistance, encoder_options, distance);
+    JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_EFFORT, effort);
 
     JXL_ENSURE_SUCCESS(
         JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, sizeof(uint8_t) * pixels.size);
@@ -484,8 +472,8 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_from_jpeg(const binary& jpeg_b
     JXL_ENSURE_SUCCESS(JxlEncoderUseContainer, enc.get(), JXL_TRUE);
     JXL_ENSURE_SUCCESS(JxlEncoderStoreJPEGMetadata, enc.get(), JXL_TRUE);
 
-    auto encoder_options = JxlEncoderOptionsCreate(enc.get(), nullptr);
-    JXL_ENSURE_SUCCESS(JxlEncoderOptionsSetEffort, encoder_options, effort);
+    auto encoder_options = JxlEncoderFrameSettingsCreate(enc.get(), nullptr);
+    JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_EFFORT, effort);
     JXL_ENSURE_SUCCESS(JxlEncoderAddJPEGFrame, encoder_options, jpeg_bytes.data, jpeg_bytes.size);
     JxlEncoderCloseInput(enc.get());
 
