@@ -12,6 +12,7 @@ struct erl_error_base : std::exception
 };
 
 
+// this exception is automatically converted to {:error, <error_value>}
 template <typename T>
 struct erl_error : erl_error_base
 {
