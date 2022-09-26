@@ -148,120 +148,136 @@ struct png_read_binary
 };
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> png_decompress(const binary& png_bytes) noexcept
+void png_error_exit(png_structp png_ptr, const char* error_message)
 {
-    // check png signature
-    if (png_sig_cmp(png_bytes.data, 0, 8))
-        return Error("invalid png header"_binary);
-
-    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png_ptr)
-        return Error("couldn't initialize png read struct"_binary);
-
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
-        return Error("couldn't initialize png info struct"_binary);
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-        png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-        return Error("An error has occured while reading the PNG file"_binary);
-    }
-
-    png_read_binary data_wrapper(png_bytes);
-    png_set_read_fn(
-        png_ptr,
-        reinterpret_cast<png_voidp>(&data_wrapper),
-        [](png_structp png_ptr, png_bytep dest, png_size_t size_to_read) {
-            auto data_wrapper = reinterpret_cast<png_read_binary*>(png_get_io_ptr(png_ptr));
-            data_wrapper->read(dest, size_to_read);
-        });
-    png_set_sig_bytes(png_ptr, 8);
-    png_read_info(png_ptr, info_ptr);
-
-    png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
-    png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
-    png_uint_32 bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-    png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
-    png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
-
-    switch (color_type)
-    {
-    case PNG_COLOR_TYPE_PALETTE:  // convert palette to RGB
-        png_set_palette_to_rgb(png_ptr);
-        channels = 3;
-        break;
-    case PNG_COLOR_TYPE_GRAY:  // expand 1, 2, or 4 bit grayscale to 8 bit grayscale
-        if (bit_depth < 8)
-            png_set_expand_gray_1_2_4_to_8(png_ptr);
-        bit_depth = 8;
-        break;
-    }
-
-    auto row_pointers = make_unique<png_bytep[]>(height);
-    const unsigned int stride = width * bit_depth * channels / 8;
-    binary output(height * stride);
-    for (size_t i = 0; i < height; i++)
-        row_pointers[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
-
-    png_read_image(png_ptr, row_pointers.get());
-
-    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-
-    return Ok(make_tuple(std::move(output), width, height, channels));
+    throw runtime_error(error_message);
 }
 
 
-erl_result<vector<png_byte>, binary>
-png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string> png_decompress(const binary& png_bytes)
 {
-    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    // check png signature
+    if (png_sig_cmp(png_bytes.data, 0, 8))
+        return Error("invalid png header"s);
+
+    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
-        return Error("couldn't initialize png write struct"_binary);
+        return Error("couldn't initialize png read struct"s);
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
-        return Error("[write_png_file] png_create_info_struct failed"_binary);
+        return Error("couldn't initialize png info struct"s);
 
-    if (setjmp(png_jmpbuf(png_ptr)))
+    try
     {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        return Error("[write_png_file] Error during init_io"_binary);
+        // read metadata
+        png_read_binary data_wrapper(png_bytes);
+        png_set_read_fn(
+            png_ptr,
+            reinterpret_cast<png_voidp>(&data_wrapper),
+            [](png_structp png_ptr, png_bytep dest, png_size_t size_to_read) {
+                auto data_wrapper = reinterpret_cast<png_read_binary*>(png_get_io_ptr(png_ptr));
+                data_wrapper->read(dest, size_to_read);
+            });
+        png_set_sig_bytes(png_ptr, 8);
+        png_read_info(png_ptr, info_ptr);
+
+        png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
+        png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
+        png_uint_32 bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+        png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
+        png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
+
+        switch (color_type)
+        {
+        case PNG_COLOR_TYPE_PALETTE:  // convert palette to RGB
+            png_set_palette_to_rgb(png_ptr);
+            channels = 3;
+            break;
+        case PNG_COLOR_TYPE_GRAY:  // expand 1, 2, or 4 bit grayscale to 8 bit grayscale
+            if (bit_depth < 8)
+                png_set_expand_gray_1_2_4_to_8(png_ptr);
+            bit_depth = 8;
+            break;
+        }
+
+        // set up the row pointers, which png_read_image requires
+        auto row_pointers = make_unique<png_bytep[]>(height);
+        const unsigned int stride = width * bit_depth * channels / 8;
+        binary output(height * stride);
+        for (size_t i = 0; i < height; i++)
+            row_pointers[i] = reinterpret_cast<png_bytep>(output.data) + i * stride;
+
+        png_read_image(png_ptr, row_pointers.get());
+
+        png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+        png_ptr = nullptr;
+
+        return Ok(make_tuple(std::move(output), width, height, channels));
     }
+    catch (runtime_error& e)
+    {
+        if (png_ptr)
+            png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+        return Error<string>(e.what());
+    }
+}
 
-    // set up the output data, as well as the callback to write into that data
-    vector<png_byte> out_data;
-    auto png_chunk_producer = [](png_structp png_ptr, png_bytep data, png_size_t length) {
-        auto out_data_p = reinterpret_cast<vector<png_byte>*>(png_get_io_ptr(png_ptr));
-        std::copy_n(data, length, std::back_inserter(*out_data_p));
-    };
-    png_set_write_fn(png_ptr, &out_data, png_chunk_producer, nullptr);
 
-    // write header
-    png_set_IHDR(
-        png_ptr,
-        info_ptr,
-        width,
-        height,
-        8,
-        PNG_COLOR_TYPE_RGB,
-        PNG_INTERLACE_NONE,
-        PNG_COMPRESSION_TYPE_BASE,
-        PNG_FILTER_TYPE_BASE);
-    png_write_info(png_ptr, info_ptr);
+erl_result<vector<png_byte>, string>
+png_compress(const binary& pixels, uint32_t width, uint32_t height, uint32_t channels)
+{
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
+    if (!png_ptr)
+        return Error("couldn't initialize png write struct"s);
 
-    // write the pixels
-    auto row_pointers = make_unique<png_bytep[]>(height);
-    const unsigned int stride = width * channels;
-    for (size_t i = 0; i < height; i++)
-        row_pointers[i] = reinterpret_cast<png_bytep>(pixels.data + i * stride);
-    png_write_image(png_ptr, row_pointers.get());
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr)
+        return Error("[write_png_file] png_create_info_struct failed"s);
 
-    // cleanup
-    png_write_end(png_ptr, NULL);
-    png_destroy_write_struct(&png_ptr, &info_ptr);
+    try
+    {
+        // set up the output data, as well as the callback to write into that data
+        vector<png_byte> out_data;
+        auto png_chunk_producer = [](png_structp png_ptr, png_bytep data, png_size_t length) {
+            auto out_data_p = reinterpret_cast<vector<png_byte>*>(png_get_io_ptr(png_ptr));
+            std::copy_n(data, length, std::back_inserter(*out_data_p));
+        };
+        png_set_write_fn(png_ptr, &out_data, png_chunk_producer, nullptr);
 
-    return Ok(std::move(out_data));
+        // write header
+        png_set_IHDR(
+            png_ptr,
+            info_ptr,
+            width,
+            height,
+            8,
+            PNG_COLOR_TYPE_RGB,
+            PNG_INTERLACE_NONE,
+            PNG_COMPRESSION_TYPE_BASE,
+            PNG_FILTER_TYPE_BASE);
+        png_write_info(png_ptr, info_ptr);
+
+        // write the pixels
+        auto row_pointers = make_unique<png_bytep[]>(height);
+        const unsigned int stride = width * channels;
+        for (size_t i = 0; i < height; i++)
+            row_pointers[i] = reinterpret_cast<png_bytep>(pixels.data + i * stride);
+        png_write_image(png_ptr, row_pointers.get());
+
+        // cleanup
+        png_write_end(png_ptr, nullptr);
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        png_ptr = nullptr;
+
+        return Ok(std::move(out_data));
+    }
+    catch (runtime_error& e)
+    {
+        if (png_ptr)
+            png_destroy_write_struct(&png_ptr, &info_ptr);
+        return Error<string>(e.what());
+    }
 }
 
 
