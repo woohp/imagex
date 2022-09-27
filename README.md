@@ -1,6 +1,23 @@
 # Imagex
 
-Provides NIF wrappers for loading and saving common images (jpeg, png, jpeg-xl, and ppm for now).
+Load and save images, using libjpeg, libpng, libjxl, libtiff, and poppler as backends.
+Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf.
+
+Where possible, yielding NIFs are used so that it plays nice with BEAM VM's scheduler (WIP).
+
+
+## Install
+
+Please ensure that libjpeg, libpng, libjxl, libtiff, and libpoppler are installed.
+
+```elixir
+defp deps do
+  [
+    {:imagex, "~> 0.1.0", github: "woohp/imagex", branch: "master"}
+  ]
+end
+```
+
 
 ## Usage
 
@@ -44,7 +61,7 @@ To work with pdf files
 
 ```elixir
 bytes = File.read!("lena.pdf")
-{:ok, pdf_document} = Imagex.decode(bytes, format: pdf)
+{:ok, pdf_document} = Imagex.decode(bytes, format: :pdf)
 for i <- 0..pdf_document.num_pages-1 do
   {:ok, image} = Imagex.Pdf.render_page(pdf_document, i, dpi: 150)
 end
@@ -54,7 +71,7 @@ and similarly, work with tiff files
 
 ```elixir
 bytes = File.read!("lena.tiff")
-{:ok, tiff_document} = Imagex.decode(bytes, format: tiff)
+{:ok, tiff_document} = Imagex.decode(bytes, format: :tiff)
 for i <- 0..tiff_document.num_pages-1 do
   {:ok, image} = Imagex.Tiff.render_page(tiff_document, i)
 end
