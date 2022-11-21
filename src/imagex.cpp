@@ -3,6 +3,7 @@
 #include "jxl/decode_cxx.h"
 #include "stl.hpp"
 #include "yielding.hpp"
+#include <bit>
 #include <erl_nif.h>
 #include <iostream>
 #include <jpeglib.h>
@@ -172,7 +173,8 @@ void png_error_exit(png_structp png_ptr, const char* error_message)
 }
 
 
-yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>> png_decompress(vector<uint8_t> png_bytes)
+yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t>, string>>
+png_decompress(vector<uint8_t> png_bytes)
 {
     yielding_timer timer;
 
@@ -260,10 +262,22 @@ yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>> png_de
             }
         }
 
+        // for 16-bit data, convert from big-endian to little-endian, if necessary, b/c png stores data as big-endian
+        if constexpr (std::endian::native == std::endian::little)
+        {
+            if (bit_depth == 16)
+            {
+                uint16_t* pixels_ptr = reinterpret_cast<uint16_t*>(output.data);
+                auto n_elements = height * width * channels;
+                for (size_t i = 0; i < n_elements; i++)
+                    pixels_ptr[i] = __builtin_bswap16(pixels_ptr[i]);
+            }
+        }
+
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        co_yield Ok(make_tuple(std::move(output), width, height, channels));
+        co_yield Ok(make_tuple(std::move(output), width, height, channels, bit_depth));
     }
     catch (erl_error<string>& e)
     {

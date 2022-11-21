@@ -3,9 +3,13 @@ defmodule Imagex do
   Documentation for Imagex.
   """
 
-  defp to_tensor({:ok, {pixels, width, height, channels}}) do
+  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth}}) do
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-    {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
+    {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
+  end
+
+  defp to_tensor({:ok, {pixels, width, height, channels}}) do
+    to_tensor({:ok, {pixels, width, height, channels, 8}})
   end
 
   defp to_tensor({:error, _error_msg} = output) do

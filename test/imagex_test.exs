@@ -55,6 +55,16 @@ defmodule ImagexTest do
     assert String.at(Nx.to_binary(image), 3) == <<191>>
   end
 
+  test "decode png - 16bit" do
+    png_bytes = File.read!("test/assets/16bit.png")
+    {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+    assert image.shape == {118, 170, 4}
+    assert image.type == {:u, 16}
+
+    assert String.slice(Nx.to_binary(image), 0, 20) ==
+             <<191, 178, 191, 182, 63, 194, 255, 255, 63, 178, 63, 182, 191, 193, 255, 255, 95, 178, 191, 182>>
+  end
+
   test "encode image to png", %{image: test_image} do
     {:ok, compressed_bytes} = Imagex.encode(test_image, :png)
     assert byte_size(compressed_bytes) < Nx.size(test_image)
