@@ -17,7 +17,7 @@ defmodule ImagexTest do
   end
 
   test "decode jpeg image raises exception for bad stuff" do
-    {:error, error_reason} = Imagex.decode(<< 0, 1, 2 >>, format: :jpeg)
+    {:error, error_reason} = Imagex.decode(<<0, 1, 2>>, format: :jpeg)
     assert String.starts_with?(error_reason, "Not a JPEG file")
   end
 
@@ -29,14 +29,15 @@ defmodule ImagexTest do
   test "decode png image", %{image: test_image} do
     png_bytes = File.read!("test/assets/lena.png")
     {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
-    assert image.shape== {512, 512, 3}
+    assert image.shape == {512, 512, 3}
 
-    assert Nx.to_binary(image) == Nx.to_binary(test_image)  # should it be the same as our test PPM image
+    # should it be the same as our test PPM image
+    assert Nx.to_binary(image) == Nx.to_binary(test_image)
     assert image.shape == test_image.shape
   end
 
   test "decode png image raises exception for bad stuff" do
-    {:error, error_reason} = Imagex.decode(<< 0, 1, 2 >>, format: :png)
+    {:error, error_reason} = Imagex.decode(<<0, 1, 2>>, format: :png)
     assert String.starts_with?(error_reason, "invalid png header")
   end
 
@@ -50,7 +51,8 @@ defmodule ImagexTest do
     png_bytes = File.read!("test/assets/lena-rgba.png")
     {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
     assert image.shape == {512, 512, 4}
-    assert String.at(Nx.to_binary(image), 3) == <<191>>  # the alpha channel was set to 75% (or 0.75 * 255)
+    # the alpha channel was set to 75% (or 0.75 * 255)
+    assert String.at(Nx.to_binary(image), 3) == <<191>>
   end
 
   test "encode image to png", %{image: test_image} do
@@ -59,7 +61,8 @@ defmodule ImagexTest do
 
     # if we decompress again, we should get back the original pixels
     {:ok, image} = Imagex.decode(compressed_bytes, format: :png)
-    assert Nx.to_binary(image) == Nx.to_binary(test_image)  # should it be the same as our test PPM image
+    # should it be the same as our test PPM image
+    assert Nx.to_binary(image) == Nx.to_binary(test_image)
     assert image.shape == test_image.shape
   end
 
@@ -87,10 +90,11 @@ defmodule ImagexTest do
   end
 
   test "encode jpeg-xl with different distances", %{image: test_image} do
-    compressed_sizes = for distance <- 0..15 do
-      {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, distance: distance)
-      byte_size(compressed_bytes)
-    end
+    compressed_sizes =
+      for distance <- 0..15 do
+        {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, distance: distance)
+        byte_size(compressed_bytes)
+      end
 
     for [first_size, second_size] <- Enum.chunk_every(compressed_sizes, 2, 1, :discard) do
       assert second_size < first_size
@@ -98,10 +102,11 @@ defmodule ImagexTest do
   end
 
   test "encode jpeg-xl with different efforts", %{image: test_image} do
-    compressed_sizes = for effort <- 1..9 do
-      {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, effort: effort)
-      byte_size(compressed_bytes)
-    end
+    compressed_sizes =
+      for effort <- 1..9 do
+        {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, effort: effort)
+        byte_size(compressed_bytes)
+      end
 
     assert List.last(compressed_sizes) < List.first(compressed_sizes)
   end
@@ -117,13 +122,14 @@ defmodule ImagexTest do
     {:ok, image_from_jxl} = Imagex.decode(jxl_bytes, format: :jxl)
     {:ok, image_from_jpeg} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
-    max_diff = Nx.subtract(
-      Nx.as_type(image_from_jxl, {:s, 16}),
-      Nx.as_type(image_from_jpeg, {:s, 16})
-    )
-    |> Nx.abs()
-    |> Nx.reduce_max()
-    |> Nx.to_number()
+    max_diff =
+      Nx.subtract(
+        Nx.as_type(image_from_jxl, {:s, 16}),
+        Nx.as_type(image_from_jpeg, {:s, 16})
+      )
+      |> Nx.abs()
+      |> Nx.reduce_max()
+      |> Nx.to_number()
 
     assert max_diff <= 20
   end
@@ -178,7 +184,7 @@ defmodule ImagexTest do
     {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
     assert image.shape == {512, 512, 3}
 
-    assert Imagex.decode(<< 0, 1, 2 >>) == {:error, "failed to decode"}
+    assert Imagex.decode(<<0, 1, 2>>) == {:error, "failed to decode"}
   end
 
   test "open from path directly" do
@@ -194,7 +200,8 @@ defmodule ImagexTest do
     {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0)
     assert image.shape == {512, 512, 4}
 
-    {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0, dpi: 144)  # double the default dpi of 72
+    # double the default dpi of 72
+    {:ok, %Nx.Tensor{} = image} = Imagex.Pdf.render_page(pdf, 0, dpi: 144)
     assert image.shape == {1024, 1024, 4}
   end
 
