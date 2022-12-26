@@ -139,6 +139,14 @@ defmodule ImagexTest do
     assert decoded_image == image
   end
 
+  test "encode jpeg-xl 16-bit with alpha" do
+    image = Nx.iota({8, 8, 4}, type: :u16)
+    {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+
+    {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+    assert decoded_image == image
+  end
+
   test "decode jpeg-xl 16-bit" do
     png_bytes = File.read!("test/assets/16bit.jxl")
     {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :jxl)

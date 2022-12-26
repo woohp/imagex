@@ -396,6 +396,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 
     if (pixel_format.num_channels == 2 || pixel_format.num_channels == 4)
     {
+        basic_info.num_extra_channels = 1;
         basic_info.alpha_exponent_bits = 0;
         if (basic_info.bits_per_sample == 32)
             basic_info.alpha_bits = 16;
