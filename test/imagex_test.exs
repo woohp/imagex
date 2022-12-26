@@ -61,8 +61,18 @@ defmodule ImagexTest do
     assert image.shape == {118, 170, 4}
     assert image.type == {:u, 16}
 
-    assert String.slice(Nx.to_binary(image), 0, 20) ==
-             <<191, 178, 191, 182, 63, 194, 255, 255, 63, 178, 63, 182, 191, 193, 255, 255, 95, 178, 191, 182>>
+    assert Nx.to_flat_list(image) |> Enum.take(10) == [
+             45759,
+             46783,
+             49727,
+             65535,
+             45631,
+             46655,
+             49599,
+             65535,
+             45663,
+             46783
+           ]
   end
 
   test "encode image to png", %{image: test_image} do
@@ -135,8 +145,18 @@ defmodule ImagexTest do
     assert image.shape == {118, 170, 4}
     assert image.type == {:u, 16}
 
-    assert String.slice(Nx.to_binary(image), 0, 20) ==
-             <<191, 178, 191, 182, 63, 194, 255, 255, 63, 178, 63, 182, 191, 193, 255, 255, 95, 178, 191, 182>>
+    assert Nx.to_flat_list(image) |> Enum.take(10) == [
+             45759,
+             46783,
+             49727,
+             65535,
+             45631,
+             46655,
+             49599,
+             65535,
+             45663,
+             46783
+           ]
   end
 
   test "jpeg-xl transcode from jpeg" do
