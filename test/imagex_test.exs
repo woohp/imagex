@@ -121,6 +121,24 @@ defmodule ImagexTest do
     assert List.last(compressed_sizes) < List.first(compressed_sizes)
   end
 
+  test "encode jpeg-xl 16-bit" do
+    image = Nx.iota({8, 8, 3}, type: :u16)
+    {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+
+    {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+    assert decoded_image == image
+  end
+
+  test "decode jpeg-xl 16-bit" do
+    png_bytes = File.read!("test/assets/16bit.jxl")
+    {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :jxl)
+    assert image.shape == {118, 170, 4}
+    assert image.type == {:u, 16}
+
+    assert String.slice(Nx.to_binary(image), 0, 20) ==
+             <<191, 178, 191, 182, 63, 194, 255, 255, 63, 178, 63, 182, 191, 193, 255, 255, 95, 178, 191, 182>>
+  end
+
   test "jpeg-xl transcode from jpeg" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
 

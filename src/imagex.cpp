@@ -28,6 +28,9 @@
 
 using namespace std;
 
+// pixels, width, height, channels, bit_depth
+typedef tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t> decompress_result_t;
+
 
 void jpeg_error_exit(j_common_ptr cinfo)
 {
@@ -37,8 +40,7 @@ void jpeg_error_exit(j_common_ptr cinfo)
 }
 
 
-yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string>>
-jpeg_decompress(std::vector<uint8_t> jpeg_bytes) noexcept
+yielding<erl_result<decompress_result_t, string>> jpeg_decompress(std::vector<uint8_t> jpeg_bytes) noexcept
 {
     struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
@@ -81,7 +83,7 @@ jpeg_decompress(std::vector<uint8_t> jpeg_bytes) noexcept
         jpeg_finish_decompress(&cinfo);
         jpeg_destroy_decompress(&cinfo);
         co_yield Ok(make_tuple(
-            move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components)));
+            move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components), 8u));
     }
     catch (erl_error<string>& e)
     {
@@ -173,8 +175,7 @@ void png_error_exit(png_structp png_ptr, const char* error_message)
 }
 
 
-yielding<erl_result<tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t>, string>>
-png_decompress(vector<uint8_t> png_bytes)
+yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t> png_bytes)
 {
     yielding_timer timer;
 
@@ -411,7 +412,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(const binary& jxl_bytes)
+erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
     static auto runner = JxlResizableParallelRunnerMake(nullptr);
@@ -421,14 +422,13 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
         JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE);
     JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
 
-    JxlPixelFormat format = { 3, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
-
     JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
 
     binary pixels;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t channels = 0;
+    uint32_t bit_depth = 0;
 
     for (;;)
     {
@@ -446,9 +446,14 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
         {
             JxlBasicInfo info;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBasicInfo, dec.get(), &info);
+
+            if (info.exponent_bits_per_sample != 0)
+                return Error("FLOAT32 images are currently not yet supported"_binary);
+
             width = info.xsize;
             height = info.ysize;
             channels = info.num_color_channels + info.num_extra_channels;
+            bit_depth = info.bits_per_sample;
         }
         else if (status == JXL_DEC_COLOR_ENCODING)
         {
@@ -466,16 +471,18 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
+            JxlPixelFormat format
+                = { channels, bit_depth == 8 ? JXL_TYPE_UINT8 : JXL_TYPE_UINT16, JXL_NATIVE_ENDIAN, 0 };
+
             size_t buffer_size;
             JXL_ENSURE_SUCCESS(JxlDecoderImageOutBufferSize, dec.get(), &format, &buffer_size);
-            if (buffer_size != width * height * channels)
+            if (buffer_size != width * height * channels * bit_depth / 8)
             {
                 // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
                 return Error("Invalid out buffer size"_binary);
             }
             pixels = binary { buffer_size };
-            size_t pixels_buffer_size = pixels.size * sizeof(uint8_t);
-            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels_buffer_size);
+            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels.size);
         }
         else if (status == JXL_DEC_FULL_IMAGE)
         {
@@ -487,7 +494,7 @@ erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary> jxl_decompress(c
             // All decoding successfully finished.
             // It's not required to call JxlDecoderReleaseInput(dec.get()) here since
             // the decoder will be destroyed.
-            return Ok(make_tuple(std::move(pixels), width, height, channels));
+            return Ok(make_tuple(std::move(pixels), width, height, channels, bit_depth));
         }
         else
         {
@@ -502,6 +509,7 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     uint32_t width,
     uint32_t height,
     uint32_t channels,
+    uint32_t bit_depth,
     double distance,
     bool lossless,
     int effort)
@@ -512,7 +520,8 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     JXL_ENSURE_SUCCESS(JxlEncoderSetParallelRunner, enc.get(), JxlThreadParallelRunner, runner.get());
 
-    JxlPixelFormat pixel_format = { channels, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
+    JxlPixelFormat pixel_format
+        = { channels, bit_depth == 16 ? JXL_TYPE_UINT16 : JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
 
     JxlBasicInfo basic_info = jxl_basic_info_from_pixel_format(pixel_format);
     basic_info.xsize = width;
@@ -530,8 +539,7 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     JXL_ENSURE_SUCCESS(JxlEncoderSetFrameDistance, encoder_options, distance);
     JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_EFFORT, effort);
 
-    JXL_ENSURE_SUCCESS(
-        JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, sizeof(uint8_t) * pixels.size);
+    JXL_ENSURE_SUCCESS(JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, pixels.size);
     JxlEncoderCloseInput(enc.get());
 
     vector<uint8_t> compressed(64);

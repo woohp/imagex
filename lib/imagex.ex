@@ -8,16 +8,14 @@ defmodule Imagex do
     {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
   end
 
-  defp to_tensor({:ok, {pixels, width, height, channels}}) do
-    to_tensor({:ok, {pixels, width, height, channels, 8}})
-  end
-
   defp to_tensor({:error, _error_msg} = output) do
     output
   end
 
   defp standardize_shape({h, w}), do: {h, w, 1}
   defp standardize_shape({_h, _w, _c} = shape), do: shape
+
+  defp get_bit_depth(%Nx.Tensor{type: {:u, bit_depth}}), do: bit_depth
 
   def encode(image, format, options \\ [])
 
@@ -39,7 +37,8 @@ defmodule Imagex do
   end
 
   def encode(image = %Nx.Tensor{}, :jxl, options) do
-    with {:ok, options} <- Keyword.validate(options, distance: 1.0, lossless: false, effort: 7) do
+    with {:ok, options} <- Keyword.validate(options, distance: 1.0, lossless: false, effort: 7),
+         bit_depth <- get_bit_depth(image) do
       # + 0.0 to convert any integer to float
       distance =
         case Keyword.get(options, :distance) do
@@ -66,7 +65,7 @@ defmodule Imagex do
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
 
-      Imagex.C.jxl_compress(pixels, w, h, c, distance, lossless, effort)
+      Imagex.C.jxl_compress(pixels, w, h, c, bit_depth, distance, lossless, effort)
     else
       error -> error
     end
