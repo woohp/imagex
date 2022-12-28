@@ -319,13 +319,21 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
         png_set_write_fn(png_ptr, &out_data, png_chunk_producer, nullptr);
 
         // write header
+        int color_type = PNG_COLOR_TYPE_RGB;
+        if (channels == 1)
+            color_type = PNG_COLOR_TYPE_GRAY;
+        else if (channels == 2)
+            color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
+        else if (channels == 4)
+            color_type = PNG_COLOR_TYPE_RGB_ALPHA;
+
         png_set_IHDR(
             png_ptr,
             info_ptr,
             width,
             height,
             8,
-            PNG_COLOR_TYPE_RGB,
+            color_type,
             PNG_INTERLACE_NONE,
             PNG_COMPRESSION_TYPE_BASE,
             PNG_FILTER_TYPE_BASE);

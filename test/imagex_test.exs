@@ -41,6 +41,12 @@ defmodule ImagexTest do
     assert String.starts_with?(error_reason, "invalid png header")
   end
 
+  test "decode png - grayscale" do
+    png_bytes = File.read!("test/assets/lena-grayscale.png")
+    {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+    assert image.shape == {512, 512}
+  end
+
   test "decode png - palette" do
     png_bytes = File.read!("test/assets/lena-palette.png")
     {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
@@ -84,6 +90,13 @@ defmodule ImagexTest do
     # should it be the same as our test PPM image
     assert Nx.to_binary(image) == Nx.to_binary(test_image)
     assert image.shape == test_image.shape
+  end
+
+  test "encode image to png - grayscale" do
+    image1 = Nx.iota({10, 10}, type: :u8)
+    {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+    {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+    assert image2 == image1
   end
 
   test "decode jpeg-xl image" do
