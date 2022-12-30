@@ -233,6 +233,12 @@ yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t>
             break;
         }
 
+        if constexpr (std::endian::native == std::endian::little)
+        {
+            if (bit_depth == 16)
+                png_set_swap(png_ptr);
+        }
+
         const unsigned int stride = width * bit_depth * channels / 8;
         binary output(height * stride);
 
@@ -259,18 +265,6 @@ yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t>
                     co_yield nullopt;
                     timer.reset();
                 }
-            }
-        }
-
-        // for 16-bit data, convert from big-endian to little-endian, if necessary, b/c png stores data as big-endian
-        if constexpr (std::endian::native == std::endian::little)
-        {
-            if (bit_depth == 16)
-            {
-                uint16_t* pixels_ptr = reinterpret_cast<uint16_t*>(output.data);
-                auto n_elements = height * width * channels;
-                for (size_t i = 0; i < n_elements; i++)
-                    pixels_ptr[i] = __builtin_bswap16(pixels_ptr[i]);
             }
         }
 
