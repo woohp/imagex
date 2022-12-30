@@ -1,5 +1,5 @@
 MIX = mix
-CFLAGS = -g -O3 -ansi -pedantic -Wall -Wextra -Wno-unused-parameter -std=c++20
+CFLAGS = -O3 -ansi -pedantic -Wall -Wextra -Wno-unused-parameter -std=c++20
 
 ERLANG_PATH = $(shell erl -eval 'io:format("~s", [lists:concat([code:root_dir(), "/erts-", erlang:system_info(version), "/include"])])' -s init stop -noshell)
 CFLAGS += -I$(ERLANG_PATH)
