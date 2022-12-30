@@ -26,7 +26,7 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  def png_compress(_pixels, _width, _height, _channels) do
+  def png_compress(_pixels, _width, _height, _channels, _bit_depth) do
     exit(:nif_library_not_loaded)
   end
 

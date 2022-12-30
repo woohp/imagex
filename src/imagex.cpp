@@ -230,7 +230,6 @@ yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t>
         case PNG_COLOR_TYPE_GRAY:  // expand 1, 2, or 4 bit grayscale to 8 bit grayscale
             if (bit_depth < 8)
                 png_set_expand_gray_1_2_4_to_8(png_ptr);
-            bit_depth = 8;
             break;
         }
 
@@ -290,7 +289,7 @@ yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t>
 
 
 yielding<erl_result<vector<png_byte>, string>>
-png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels)
+png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, uint32_t bit_depth)
 {
     yielding_timer timer;
 
@@ -332,15 +331,21 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
             info_ptr,
             width,
             height,
-            8,
+            bit_depth,
             color_type,
             PNG_INTERLACE_NONE,
             PNG_COMPRESSION_TYPE_BASE,
             PNG_FILTER_TYPE_BASE);
         png_write_info(png_ptr, info_ptr);
 
+        if constexpr (std::endian::native == std::endian::little)
+        {
+            if (bit_depth == 16)
+                png_set_swap(png_ptr);
+        }
+
         // write the pixels
-        const unsigned int stride = width * channels;
+        const unsigned int stride = width * channels * bit_depth / 8;
         for (size_t i = 0; i < height; i++)
         {
             png_write_row(png_ptr, pixels.data() + i * stride);

@@ -33,7 +33,8 @@ defmodule Imagex do
   def encode(image = %Nx.Tensor{}, :png, []) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
-    Imagex.C.png_compress(pixels, w, h, c)
+    bit_depth = get_bit_depth(image)
+    Imagex.C.png_compress(pixels, w, h, c, bit_depth)
   end
 
   def encode(image = %Nx.Tensor{}, :jxl, options) do

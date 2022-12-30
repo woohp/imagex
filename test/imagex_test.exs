@@ -84,7 +84,7 @@ defmodule ImagexTest do
              ]
     end
 
-    test "encode rgb image to png", %{image: test_image} do
+    test "encode rgb image", %{image: test_image} do
       {:ok, compressed_bytes} = Imagex.encode(test_image, :png)
       assert byte_size(compressed_bytes) < Nx.size(test_image)
 
@@ -95,8 +95,43 @@ defmodule ImagexTest do
       assert image.shape == test_image.shape
     end
 
+    test "encode rgba image" do
+      image1 = Nx.iota({10, 10, 4}, type: :u8)
+      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      assert image2 == image1
+    end
+
     test "encode grayscale image" do
       image1 = Nx.iota({10, 10}, type: :u8)
+      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      assert image2 == image1
+    end
+
+    test "encode 16-bit rgb image" do
+      image1 = Nx.iota({100, 100, 3}, type: :u16)
+      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      assert image2 == image1
+    end
+
+    test "encode 16-bit rgba image" do
+      image1 = Nx.iota({100, 100, 4}, type: :u16)
+      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      assert image2 == image1
+    end
+
+    test "encode 16-bit grayscale image" do
+      image1 = Nx.iota({100, 100}, type: :u16)
+      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      assert image2 == image1
+    end
+
+    test "encode 16-bit grayscale-alpha image" do
+      image1 = Nx.iota({100, 100, 2}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
       {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
