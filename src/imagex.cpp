@@ -401,14 +401,16 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
         break;
     }
 
+    if (pixel_format.num_channels < 3)
+        basic_info.num_color_channels = 1;
+    else
+        basic_info.num_color_channels = 3;
+
     if (pixel_format.num_channels == 2 || pixel_format.num_channels == 4)
     {
+        basic_info.alpha_exponent_bits = basic_info.exponent_bits_per_sample;
+        basic_info.alpha_bits = basic_info.bits_per_sample;
         basic_info.num_extra_channels = 1;
-        basic_info.alpha_exponent_bits = 0;
-        if (basic_info.bits_per_sample == 32)
-            basic_info.alpha_bits = 16;
-        else
-            basic_info.alpha_bits = basic_info.bits_per_sample;
     }
     else
     {

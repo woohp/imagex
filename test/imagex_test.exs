@@ -145,6 +145,38 @@ defmodule ImagexTest do
       assert image.shape == {512, 512, 3}
     end
 
+    test "decode rgba image" do
+      jxl_bytes = File.read!("test/assets/lena-rgba.jxl")
+      {:ok, %Tensor{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+      assert image.shape == {512, 512, 4}
+    end
+
+    test "decode grayscale image" do
+      jxl_bytes = File.read!("test/assets/lena-grayscale.jxl")
+      {:ok, %Tensor{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+      assert image.shape == {512, 512}
+    end
+
+    test "decode 16-bit image" do
+      png_bytes = File.read!("test/assets/16bit.jxl")
+      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :jxl)
+      assert image.shape == {118, 170, 4}
+      assert image.type == {:u, 16}
+
+      assert Nx.to_flat_list(image) |> Enum.take(10) == [
+               45759,
+               46783,
+               49727,
+               65535,
+               45631,
+               46655,
+               49599,
+               65535,
+               45663,
+               46783
+             ]
+    end
+
     test "encode rgb image", %{image: test_image} do
       png_bytes = File.read!("test/assets/lena.png")
 
@@ -186,26 +218,6 @@ defmodule ImagexTest do
       assert List.last(compressed_sizes) < List.first(compressed_sizes)
     end
 
-    test "decode 16-bit image" do
-      png_bytes = File.read!("test/assets/16bit.jxl")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :jxl)
-      assert image.shape == {118, 170, 4}
-      assert image.type == {:u, 16}
-
-      assert Nx.to_flat_list(image) |> Enum.take(10) == [
-               45759,
-               46783,
-               49727,
-               65535,
-               45631,
-               46655,
-               49599,
-               65535,
-               45663,
-               46783
-             ]
-    end
-
     test "encode 16-bit image" do
       image = Nx.iota({8, 8, 3}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
@@ -214,8 +226,16 @@ defmodule ImagexTest do
       assert decoded_image == image
     end
 
-    test "encode 16-bit image with alpha" do
+    test "encode 16-bit rgba image" do
       image = Nx.iota({8, 8, 4}, type: :u16)
+      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+
+      {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+      assert decoded_image == image
+    end
+
+    test "encode 16-bit grayscale image" do
+      image = Nx.iota({8, 8, 2}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
 
       {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
