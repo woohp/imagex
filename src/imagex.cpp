@@ -577,7 +577,8 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
 }
 
 
-erl_result<vector<uint8_t>, binary> jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort)
+erl_result<vector<uint8_t>, binary>
+jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_metadata)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
 
@@ -585,6 +586,7 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_from_jpeg(const binary& jpeg_b
     JXL_ENSURE_SUCCESS(JxlEncoderStoreJPEGMetadata, enc.get(), JXL_TRUE);
 
     auto encoder_options = JxlEncoderFrameSettingsCreate(enc.get(), nullptr);
+    JXL_ENSURE_SUCCESS(JxlEncoderStoreJPEGMetadata, enc.get(), store_jpeg_metadata);
     JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_EFFORT, effort);
     JXL_ENSURE_SUCCESS(JxlEncoderAddJPEGFrame, encoder_options, jpeg_bytes.data, jpeg_bytes.size);
     JxlEncoderCloseInput(enc.get());

@@ -38,7 +38,7 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  def jxl_transcode_from_jpeg(_jpeg_bytes, _effort) do
+  def jxl_transcode_from_jpeg(_jpeg_bytes, _effort, _store_jpeg_metadata) do
     exit(:nif_library_not_loaded)
   end
 

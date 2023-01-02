@@ -273,6 +273,15 @@ defmodule ImagexTest do
 
       assert byte_size(high_effort_bytes) < byte_size(low_effort_bytes)
     end
+
+    test "transcode from jpeg without metadata" do
+      jpeg_bytes = File.read!("test/assets/lena.jpg")
+
+      {:ok, bytes_with_metadata} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, store_jpeg_metadata: true)
+      {:ok, bytes_without_metadata} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, store_jpeg_metadata: false)
+
+      assert byte_size(bytes_with_metadata) > byte_size(bytes_without_metadata)
+    end
   end
 
   test "decode ppm" do

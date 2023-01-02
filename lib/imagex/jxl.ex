@@ -1,6 +1,6 @@
 defmodule Imagex.Jxl do
   def transcode_from_jpeg(jpeg_bytes, options \\ []) do
-    with {:ok, options} <- Keyword.validate(options, effort: 7) do
+    with {:ok, options} <- Keyword.validate(options, effort: 7, store_jpeg_metadata: 1) do
       effort =
         case Keyword.get(options, :effort) do
           value when value in 1..9 -> value
@@ -15,7 +15,15 @@ defmodule Imagex.Jxl do
           :tortoise -> 9
         end
 
-      Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, effort)
+      store_jpeg_metadata =
+        case Keyword.get(options, :store_jpeg_metadata) do
+          0 -> 0
+          false -> 0
+          1 -> 1
+          true -> 1
+        end
+
+      Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, effort, store_jpeg_metadata)
     else
       error -> error
     end
