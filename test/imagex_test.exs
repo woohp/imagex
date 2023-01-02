@@ -282,6 +282,23 @@ defmodule ImagexTest do
 
       assert byte_size(bytes_with_metadata) > byte_size(bytes_without_metadata)
     end
+
+    test "decode transcoded jpeg image" do
+      jxl_bytes = File.read!("test/assets/lena-transcode.jxl")
+      {:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
+      assert byte_size(jpeg_bytes) == 68750
+
+      # should be able to decode the jpeg bytes
+      {:ok, image} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      assert image.shape == {512, 512, 3}
+    end
+
+    test "decode transcoded jpeg image fails gracefully when not possible" do
+      # for a file that did not come from a jpeg to begin with, it should fail gracefully
+      jxl_bytes = File.read!("test/assets/lena.jxl")
+      {:error, reason} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
+      assert String.starts_with?(reason, "cannot be transcoded")
+    end
   end
 
   test "decode ppm" do

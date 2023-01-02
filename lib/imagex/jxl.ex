@@ -28,4 +28,8 @@ defmodule Imagex.Jxl do
       error -> error
     end
   end
+
+  def transcode_to_jpeg(jxl_bytes) do
+    Imagex.C.jxl_transcode_to_jpeg(jxl_bytes)
+  end
 end

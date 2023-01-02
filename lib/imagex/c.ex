@@ -42,6 +42,10 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
+  def jxl_transcode_to_jpeg(_jxl_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
   def pdf_load_document(_bytes) do
     exit(:nif_library_not_loaded)
   end

@@ -502,8 +502,7 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
         else if (status == JXL_DEC_SUCCESS)
         {
             // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since
-            // the decoder will be destroyed.
+            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
             return Ok(make_tuple(std::move(pixels), width, height, channels, bit_depth));
         }
         else
@@ -613,6 +612,70 @@ jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_met
     }
 
     return Ok(std::move(compressed));
+}
+
+
+erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_bytes)
+{
+    // Multi-threaded parallel runner.
+    static auto runner = JxlResizableParallelRunnerMake(nullptr);
+
+    auto dec = JxlDecoderMake(nullptr);
+    JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_FULL_IMAGE | JXL_DEC_JPEG_RECONSTRUCTION);
+    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
+
+    JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
+
+    vector<uint8_t> jpeg_bytes;
+
+    for (;;)
+    {
+        JxlDecoderStatus status = JxlDecoderProcessInput(dec.get());
+
+        if (status == JXL_DEC_ERROR)
+        {
+            return Error("Decoder error"_binary);
+        }
+        else if (status == JXL_DEC_NEED_MORE_INPUT)
+        {
+            return Error("Error, already provided all input"_binary);
+        }
+        else if (status == JXL_DEC_JPEG_RECONSTRUCTION)
+        {
+            jpeg_bytes.resize(static_cast<size_t>(jxl_bytes.size * 1.5));
+            JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data(), jpeg_bytes.size());
+        }
+        else if (status == JXL_DEC_JPEG_NEED_MORE_OUTPUT)
+        {
+            const size_t existing_size = jpeg_bytes.size();
+            jpeg_bytes.resize(static_cast<size_t>(existing_size * 1.5));
+            const size_t bytes_unwritten = JxlDecoderReleaseJPEGBuffer(dec.get());
+            const size_t bytes_already_written = existing_size - bytes_unwritten;
+            if (bytes_already_written != 0)
+                return Error("This is awkward..."_binary);
+            JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data(), jpeg_bytes.size());
+        }
+        else if (status == JXL_DEC_FULL_IMAGE)
+        {
+            // resize the vector back to the written size
+            const size_t bytes_unwritten = JxlDecoderReleaseJPEGBuffer(dec.get());
+            jpeg_bytes.resize(jpeg_bytes.size() - bytes_unwritten);
+        }
+        else if (status == JXL_DEC_SUCCESS)
+        {
+            // All decoding successfully finished.
+            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
+            return Ok(move(jpeg_bytes));
+        }
+        else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
+        {
+            return Error("cannot be transcoded to jpeg, was not transcoded from jpeg begin with."_binary);
+        }
+        else
+        {
+            return Error("Unknown decoder status"_binary);
+        }
+    }
 }
 
 
@@ -749,6 +812,7 @@ MODULE(
     def(jxl_decompress, DirtyFlags::DirtyCpu),
     def(jxl_compress, DirtyFlags::DirtyCpu),
     def(jxl_transcode_from_jpeg, DirtyFlags::DirtyCpu),
+    def(jxl_transcode_to_jpeg, DirtyFlags::DirtyCpu),
     def(pdf_load_document, DirtyFlags::DirtyCpu),
     def(pdf_render_page, DirtyFlags::DirtyCpu),
     def(tiff_load_document, DirtyFlags::DirtyCpu),
