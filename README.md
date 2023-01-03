@@ -39,9 +39,6 @@ Decode as a specific format
 ```elixir
 bytes = File.read!("lena.png")
 {:ok, image} = Imagex.decode(bytes, format: :png)
-
-# or explicitly try multiple formats
-{:ok, image} = Imagex.decode(bytes, format: [:png, :ppm])
 ```
 
 Save an image as a file

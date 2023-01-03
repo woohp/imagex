@@ -83,50 +83,37 @@ defmodule Imagex do
     Imagex.BMP.encode(image)
   end
 
-  defp decode_multi(_bytes, []), do: {:error, "failed to decode"}
-
-  defp decode_multi(bytes, [format | rest]) do
-    case decode(bytes, format: format) do
-      {:ok, image} -> {:ok, image}
-      {:error, _error_msg} -> decode_multi(bytes, rest)
-    end
-  end
-
   def decode(bytes, options \\ []) do
-    with {:ok, options} <- Keyword.validate(options, format: [:jpeg, :png, :jxl, :ppm, :bmp, :pdf, :tiff]) do
-      case Keyword.get(options, :format) do
-        :jpeg ->
-          to_tensor(Imagex.C.jpeg_decompress(bytes))
+    case Keyword.get_lazy(options, :format, fn -> Imagex.Detect.detect(bytes) end) do
+      :jpeg ->
+        to_tensor(Imagex.C.jpeg_decompress(bytes))
 
-        :png ->
-          to_tensor(Imagex.C.png_decompress(bytes))
+      :png ->
+        to_tensor(Imagex.C.png_decompress(bytes))
 
-        :jxl ->
-          to_tensor(Imagex.C.jxl_decompress(bytes))
+      :jxl ->
+        to_tensor(Imagex.C.jxl_decompress(bytes))
 
-        :ppm ->
-          Imagex.PPM.decode(bytes)
+      :ppm ->
+        Imagex.PPM.decode(bytes)
 
-        :bmp ->
-          Imagex.BMP.decode(bytes)
+      :bmp ->
+        Imagex.BMP.decode(bytes)
 
-        :pdf ->
-          case Imagex.C.pdf_load_document(bytes) do
-            {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
-            error -> error
-          end
+      :pdf ->
+        case Imagex.C.pdf_load_document(bytes) do
+          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Pdf{ref: ref, num_pages: num_pages}}
+          error -> error
+        end
 
-        :tiff ->
-          case Imagex.C.tiff_load_document(bytes) do
-            {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
-            error -> error
-          end
+      :tiff ->
+        case Imagex.C.tiff_load_document(bytes) do
+          {:ok, {ref, num_pages}} -> {:ok, %Imagex.Tiff{ref: ref, num_pages: num_pages}}
+          error -> error
+        end
 
-        formats when is_list(formats) ->
-          decode_multi(bytes, formats)
-      end
-    else
-      error -> error
+      nil ->
+        {:error, "failed to decode"}
     end
   end
 
@@ -155,5 +142,4 @@ defmodule Imagex do
   defp ext_to_format(".pdf"), do: :pdf
   defp ext_to_format(".tiff"), do: :tiff
   defp ext_to_format(".tif"), do: :tiff
-
 end
