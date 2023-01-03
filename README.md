@@ -24,7 +24,7 @@ end
 To load an image file (as an Nx.Tensor)
 
 ```elixir
-{:ok, %Nx.Tensor{} = image} = Imagex.open("lena.jpg")
+{:ok, image} = Imagex.open("lena.jpg")
 ```
 
 or load from memory

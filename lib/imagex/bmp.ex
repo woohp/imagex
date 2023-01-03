@@ -1,5 +1,5 @@
 defmodule Imagex.BMP do
-  def encode(%Nx.Tensor{} = image) do
+  def encode(image) when is_struct(image, Nx.Tensor) do
     {h, w, 3} = Nx.shape(image)
     total_file_size = 14 + 40 + Nx.size(image)
 
