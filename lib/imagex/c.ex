@@ -6,11 +6,11 @@ defmodule Imagex.C do
   def init do
     base_path =
       case :code.priv_dir(unquote(app)) do
-        {:error, :bad_name} -> 'priv'
+        {:error, :bad_name} -> ~c"priv"
         dir -> dir
       end
 
-    path = :filename.join(base_path, 'imagex')
+    path = :filename.join(base_path, ~c"imagex")
     :ok = :erlang.load_nif(path, 0)
   end
 

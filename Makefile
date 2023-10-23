@@ -12,7 +12,7 @@ ifneq ($(OS), Windows_NT)
     endif
 endif
 
-.PHONY: all imagex clean
+.PHONY: all imagex clean fmt
 
 all: imagex
 
@@ -25,3 +25,7 @@ priv/imagex.so: src/imagex.cpp
 clean:
 	$(MIX) clean
 	$(RM) priv/imagex.so
+
+fmt:
+	find src -type f | xargs clang-format -i
+	$(MIX) format

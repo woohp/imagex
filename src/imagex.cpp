@@ -83,7 +83,11 @@ yielding<erl_result<decompress_result_t, string>> jpeg_decompress(std::vector<ui
         jpeg_finish_decompress(&cinfo);
         jpeg_destroy_decompress(&cinfo);
         co_yield Ok(make_tuple(
-            move(output), cinfo.output_width, cinfo.output_height, static_cast<uint32_t>(cinfo.num_components), 8u));
+            std::move(output),
+            cinfo.output_width,
+            cinfo.output_height,
+            static_cast<uint32_t>(cinfo.num_components),
+            8u));
     }
     catch (erl_error<string>& e)
     {
@@ -356,7 +360,7 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
         png_destroy_write_struct(&png_ptr, &info_ptr);
         png_ptr = nullptr;
 
-        co_yield Ok(move(out_data));
+        co_yield Ok(std::move(out_data));
     }
     catch (erl_error<string>& e)
     {
@@ -665,7 +669,7 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_byte
         {
             // All decoding successfully finished.
             // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
-            return Ok(move(jpeg_bytes));
+            return Ok(std::move(jpeg_bytes));
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
@@ -748,7 +752,7 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
 
-    return Ok(make_tuple(move(pixels), width, height, channels));
+    return Ok(make_tuple(std::move(pixels), width, height, channels));
 }
 
 
