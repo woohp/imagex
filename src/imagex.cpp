@@ -1,12 +1,12 @@
 #include "expp.hpp"
-#include "jxl/decode.h"
-#include "jxl/decode_cxx.h"
 #include "stl.hpp"
 #include "yielding.hpp"
 #include <bit>
 #include <erl_nif.h>
 #include <iostream>
 #include <jpeglib.h>
+#include <jxl/decode.h>
+#include <jxl/decode_cxx.h>
 #include <jxl/encode.h>
 #include <jxl/encode_cxx.h>
 #include <jxl/resizable_parallel_runner.h>
