@@ -5,23 +5,8 @@
 #ifndef CPPCORO_GENERATOR_HPP_INCLUDED
 #define CPPCORO_GENERATOR_HPP_INCLUDED
 
-#include <exception>
-
-#if __has_include(<coroutine>)
 #include <coroutine>
-#else
-// Fallback for older experimental implementations of coroutines.
-#include <experimental/coroutine>
-namespace std
-{
-using std::experimental::coroutine_handle;
-using std::experimental::coroutine_traits;
-using std::experimental::noop_coroutine;
-using std::experimental::suspend_always;
-using std::experimental::suspend_never;
-}  // namespace std
-#endif
-
+#include <exception>
 #include <functional>
 #include <iterator>
 #include <type_traits>

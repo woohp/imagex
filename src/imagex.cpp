@@ -179,28 +179,28 @@ void png_error_exit(png_structp png_ptr, const char* error_message)
 }
 
 
-yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t> png_bytes)
+yielding<erl_result<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes)
 {
     yielding_timer timer;
 
     // check png signature
     if (png_sig_cmp(png_bytes.data(), 0, 8))
     {
-        co_yield Error("invalid png header"s);
+        co_yield Error("invalid png header");
         co_return;
     }
 
     png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
     {
-        co_yield Error("couldn't initialize png read struct"s);
+        co_yield Error("couldn't initialize png read struct");
         co_return;
     }
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
     {
-        co_yield Error("couldn't initialize png info struct"s);
+        co_yield Error("couldn't initialize png info struct");
         co_return;
     }
 
@@ -286,7 +286,7 @@ yielding<erl_result<decompress_result_t, string>> png_decompress(vector<uint8_t>
 }
 
 
-yielding<erl_result<vector<png_byte>, string>>
+yielding<erl_result<vector<png_byte>, string_view>>
 png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, uint32_t bit_depth)
 {
     yielding_timer timer;
@@ -294,14 +294,14 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
     {
-        co_yield Error("couldn't initialize png write struct"s);
+        co_yield Error("couldn't initialize png write struct");
         co_return;
     }
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
     {
-        co_yield Error("[write_png_file] png_create_info_struct failed"s);
+        co_yield Error("[write_png_file] png_create_info_struct failed");
         co_return;
     }
 
@@ -376,7 +376,7 @@ static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
 #define JXL_ENSURE_SUCCESS(func, ...)                                                                                  \
     if (func(__VA_ARGS__) != 0)                                                                                        \
     {                                                                                                                  \
-        return Error(#func " failed"_binary);                                                                          \
+        return Error(#func " failed");                                                                          \
     }
 
 
@@ -426,7 +426,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 }
 
 
-erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
+erl_result<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
     static auto runner = JxlResizableParallelRunnerMake(nullptr);
@@ -450,11 +450,11 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
 
         if (status == JXL_DEC_ERROR)
         {
-            return Error("Decoder error"_binary);
+            return Error("Decoder error");
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return Error("Error, already provided all input"_binary);
+            return Error("Error, already provided all input");
         }
         else if (status == JXL_DEC_BASIC_INFO)
         {
@@ -462,7 +462,7 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
             JXL_ENSURE_SUCCESS(JxlDecoderGetBasicInfo, dec.get(), &info);
 
             if (info.exponent_bits_per_sample != 0)
-                return Error("FLOAT32 images are currently not yet supported"_binary);
+                return Error("FLOAT32 images are currently not yet supported");
 
             width = info.xsize;
             height = info.ysize;
@@ -480,7 +480,7 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
             //         dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, icc_profile->data(), icc_profile->size())
             //     != JXL_DEC_SUCCESS)
             // {
-            //     return Error("JxlDecoderGetColorAsICCProfile failed"s);
+            //     return Error("JxlDecoderGetColorAsICCProfile failed");
             // }
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
@@ -493,7 +493,7 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
             if (buffer_size != width * height * channels * bit_depth / 8)
             {
                 // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
-                return Error("Invalid out buffer size"_binary);
+                return Error("Invalid out buffer size");
             }
             pixels = binary { buffer_size };
             JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels.size);
@@ -511,13 +511,13 @@ erl_result<decompress_result_t, binary> jxl_decompress(const binary& jxl_bytes)
         }
         else
         {
-            return Error("Unknown decoder status"_binary);
+            return Error("Unknown decoder status");
         }
     }
 }
 
 
-erl_result<vector<uint8_t>, binary> jxl_compress(
+erl_result<vector<uint8_t>, string_view> jxl_compress(
     const binary& pixels,
     uint32_t width,
     uint32_t height,
@@ -573,14 +573,14 @@ erl_result<vector<uint8_t>, binary> jxl_compress(
     if (process_result != JXL_ENC_SUCCESS)
     {
         printf("status: %d\n", process_result);
-        return Error("JxlEncoderProcessOutput failed"_binary);
+        return Error("JxlEncoderProcessOutput failed");
     }
 
     return Ok(std::move(compressed));
 }
 
 
-erl_result<vector<uint8_t>, binary>
+erl_result<vector<uint8_t>, string_view>
 jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_metadata)
 {
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
@@ -612,14 +612,14 @@ jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_met
     if (process_result != JXL_ENC_SUCCESS)
     {
         printf("status: %d\n", process_result);
-        return Error("JxlEncoderProcessOutput failed"_binary);
+        return Error("JxlEncoderProcessOutput failed");
     }
 
     return Ok(std::move(compressed));
 }
 
 
-erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_bytes)
+erl_result<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
     static auto runner = JxlResizableParallelRunnerMake(nullptr);
@@ -638,11 +638,11 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_byte
 
         if (status == JXL_DEC_ERROR)
         {
-            return Error("Decoder error"_binary);
+            return Error("Decoder error");
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return Error("Error, already provided all input"_binary);
+            return Error("Error, already provided all input");
         }
         else if (status == JXL_DEC_JPEG_RECONSTRUCTION)
         {
@@ -656,7 +656,7 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_byte
             const size_t bytes_unwritten = JxlDecoderReleaseJPEGBuffer(dec.get());
             const size_t bytes_already_written = existing_size - bytes_unwritten;
             if (bytes_already_written != 0)
-                return Error("This is awkward..."_binary);
+                return Error("This is awkward...");
             JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data(), jpeg_bytes.size());
         }
         else if (status == JXL_DEC_FULL_IMAGE)
@@ -673,11 +673,11 @@ erl_result<vector<uint8_t>, binary> jxl_transcode_to_jpeg(const binary& jxl_byte
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
-            return Error("cannot be transcoded to jpeg, was not transcoded from jpeg begin with."_binary);
+            return Error("cannot be transcoded to jpeg, was not transcoded from jpeg begin with.");
         }
         else
         {
-            return Error("Unknown decoder status"_binary);
+            return Error("Unknown decoder status");
         }
     }
 }
@@ -696,21 +696,22 @@ struct TIFFWrapper
 };
 
 
+#ifdef HAS_POPPLER
+
 typedef resource<std::unique_ptr<poppler::document>> pdf_resource_t;
-typedef resource<TIFFWrapper> tiff_resource_t;
 
 
-erl_result<tuple<pdf_resource_t, int>, binary> pdf_load_document(binary bytes)
+erl_result<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes)
 {
     // load document from bytes and check for errors
     vector<char> buf(bytes.data, bytes.data + bytes.size);
     poppler::document* document = poppler::document::load_from_data(&buf);
     if (!document)
-        return Error("invalid pdf file"_binary);
+        return Error("invalid pdf file");
     if (document->is_locked())
     {
         delete document;
-        return Error("document is locked"_binary);
+        return Error("document is locked");
     }
 
     const auto num_pages = document->pages();
@@ -718,7 +719,7 @@ erl_result<tuple<pdf_resource_t, int>, binary> pdf_load_document(binary bytes)
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string_view>
 pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 {
     auto& document = document_resource.get();
@@ -732,7 +733,7 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
         | poppler::page_renderer::text_hinting);
     auto image = renderer.render_page(page.get(), dpi, dpi);
     if (!image.is_valid())
-        return Error("failed to render a valid image"_binary);
+        return Error("failed to render a valid image");
 
     uint32_t height = image.height();
     uint32_t width = image.width();
@@ -742,9 +743,9 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 
     const auto format = image.format();
     if (format == poppler::image::format_invalid)
-        return Error("Invalid image format"_binary);
+        return Error("Invalid image format");
     else if (format == poppler::image::format_mono)
-        return Error("Mono images not supported right now"_binary);
+        return Error("Mono images not supported right now");
     else if (format == poppler::image::format_bgr24 || format == poppler::image::format_argb32)
     {
         // convert bgr to rgb
@@ -756,14 +757,16 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 }
 
 
-erl_result<tuple<tiff_resource_t, int>, binary> tiff_load_document(binary bytes)
+typedef resource<TIFFWrapper> tiff_resource_t;
+
+erl_result<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary bytes)
 {
     // load document from bytes and check for errors
     auto sstream = new stringstream;
     sstream->write(reinterpret_cast<char*>(bytes.data), bytes.size);
     auto document = TIFFStreamOpen("file.tiff", reinterpret_cast<std::istream*>(sstream));
     if (!document)
-        return Error("invalid tiff file"_binary);
+        return Error("invalid tiff file");
 
     int num_pages = 0;
     do
@@ -775,7 +778,7 @@ erl_result<tuple<tiff_resource_t, int>, binary> tiff_load_document(binary bytes)
 }
 
 
-erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, binary>
+erl_result<tuple<binary, uint32_t, uint32_t, uint32_t>, string_view>
 tiff_render_page(tiff_resource_t document_resource, int page_index)
 {
     auto& [document, _] = document_resource.get();

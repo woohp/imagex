@@ -1,5 +1,6 @@
 #pragma once
 #include "casts.hpp"
+#include <concepts>
 #include <map>
 #include <stdexcept>
 #include <unordered_map>
@@ -7,6 +8,10 @@
 
 
 template <typename T>
+concept InnerType = (std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>);
+
+
+template <InnerType T>
 struct type_cast<std::vector<T>>
 {
 private:
@@ -68,7 +73,7 @@ public:
 };
 
 
-template <typename K, typename V>
+template <InnerType K, InnerType V>
 struct type_cast<std::unordered_map<K, V>>
 {
 private:
@@ -117,7 +122,7 @@ public:
 };
 
 
-template <typename K, typename V>
+template <InnerType K, InnerType V>
 struct type_cast<std::map<K, V>>
 {
 private:

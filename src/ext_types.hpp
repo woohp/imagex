@@ -13,7 +13,7 @@ struct erl_error_base : std::exception
 
 
 // this exception is automatically converted to {:error, <error_value>}
-template <typename T>
+template <std::copy_constructible T>
 struct erl_error : erl_error_base
 {
     T error_value;
@@ -52,6 +52,10 @@ struct Error
 };
 
 
+template <size_t N>
+Error(const char (&)[N]) -> Error<std::string_view>;
+
+
 template <std::move_constructible OkType, std::move_constructible ErrorType>
 struct erl_result : std::variant<OkType, ErrorType>
 {
@@ -59,7 +63,7 @@ struct erl_result : std::variant<OkType, ErrorType>
         : std::variant<OkType, ErrorType>(std::in_place_index<0>, std::move(ok_value.value))
     { }
 
-    template <typename U>
+    template <std::constructible_from<ErrorType> U>
     constexpr erl_result(Error<U> error_value)
         : std::variant<OkType, ErrorType>(std::in_place_index<1>, std::move(error_value.value))
     { }

@@ -132,6 +132,27 @@ struct type_cast<std::string>
 
 
 template <>
+struct type_cast<std::string_view>
+{
+    static std::string_view load(ErlNifEnv* env, ERL_NIF_TERM term)
+    {
+        ErlNifBinary binary_info;
+        if (!enif_inspect_binary(env, term, &binary_info))
+            throw std::invalid_argument("invalid string");
+        return std::string_view(reinterpret_cast<const char*>(binary_info.data), binary_info.size);
+    }
+
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const std::string_view s)
+    {
+        ErlNifBinary binary_info;
+        enif_alloc_binary(s.size(), &binary_info);
+        std::copy_n(s.data(), s.size(), binary_info.data);
+        return enif_make_binary(env, &binary_info);
+    }
+};
+
+
+template <>
 struct type_cast<binary>
 {
     static binary load(ErlNifEnv* env, ERL_NIF_TERM term)
@@ -190,10 +211,14 @@ struct type_cast<bool>
     static bool load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
         char buf[8];
-        int bytes_read = enif_get_atom(env, term, buf, 8, ERL_NIF_LATIN1);
-        if (bytes_read == 5 && std::string_view(buf, 4) == "true")
+        std::size_t bytes_read = enif_get_atom(env, term, buf, 8, ERL_NIF_LATIN1);
+        if (bytes_read == 0)
+            throw std::invalid_argument("not boolean");
+
+        std::string_view atom_str(buf, bytes_read - 1);
+        if (atom_str == "true"sv)
             return true;
-        else if (bytes_read == 6 && std::string_view(buf, 5) == "false")
+        else if (atom_str == "false"sv)
             return false;
         else
             throw std::invalid_argument("not boolean");
