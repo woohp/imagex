@@ -4,6 +4,7 @@
 #include "ext_types.hpp"
 #include "resource.hpp"
 #include <algorithm>
+#include <concepts>
 #include <cstdint>
 #include <erl_nif.h>
 #include <iostream>
@@ -20,92 +21,92 @@ template <typename T>
 struct type_cast;
 
 
-template <>
-struct type_cast<int>
-{
-    static int load(ErlNifEnv* env, ERL_NIF_TERM term)
+template <typename T>
+concept type_castable = requires(T t) {
     {
-        int i;
-        if (!enif_get_int(env, term, &i))
-            throw std::invalid_argument("invalid int");
-        return i;
+        type_cast<T>::handle(nullptr, t)
+    } -> std::same_as<ERL_NIF_TERM>;
+    {
+        type_cast<T>::load(nullptr, static_cast<ERL_NIF_TERM>(0))
+    } -> std::convertible_to<T>;
+};
+
+
+template <std::integral T>
+struct type_cast<T>
+{
+    static T load(ErlNifEnv* env, ERL_NIF_TERM term)
+    {
+        if constexpr (std::is_signed_v<T>)
+        {
+            if constexpr (sizeof(T) < 8)
+            {
+                int i;
+                if (!enif_get_int(env, term, &i))
+                    throw std::invalid_argument("invalid int");
+                return static_cast<T>(i);
+            }
+            else
+            {
+                ErlNifSInt64 i;
+                if (!enif_get_int64(env, term, &i))
+                    throw std::invalid_argument("invalid int64");
+                return static_cast<T>(i);
+            }
+        }
+        else
+        {
+            if constexpr (sizeof(T) < 8)
+            {
+                unsigned int i;
+                if (!enif_get_uint(env, term, &i))
+                    throw std::invalid_argument("invalid uint");
+                return static_cast<T>(i);
+            }
+            else
+            {
+                ErlNifUInt64 i;
+                if (!enif_get_uint64(env, term, &i))
+                    throw std::invalid_argument("invalid uint64");
+                return static_cast<T>(i);
+            }
+        }
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, int i) noexcept
+    static ERL_NIF_TERM handle(ErlNifEnv* env, T i) noexcept
     {
-        return enif_make_int(env, i);
+        if constexpr (std::is_signed_v<T>)
+        {
+            if constexpr (sizeof(T) < 8)
+                return enif_make_int(env, i);
+            else
+                return enif_make_int64(env, static_cast<ErlNifSInt64>(i));
+        }
+        else
+        {
+            if constexpr (sizeof(T) < 8)
+                return enif_make_uint(env, i);
+            else
+                return enif_make_uint64(env, static_cast<ErlNifUInt64>(i));
+        }
     }
 };
 
 
-template <>
-struct type_cast<uint32_t>
+template <std::floating_point T>
+struct type_cast<T>
 {
-    static uint32_t load(ErlNifEnv* env, ERL_NIF_TERM term)
-    {
-        uint32_t i;
-        if (!enif_get_uint(env, term, &i))
-            throw std::invalid_argument("invalid uint");
-        return i;
-    }
-
-    static ERL_NIF_TERM handle(ErlNifEnv* env, uint32_t i) noexcept
-    {
-        return enif_make_uint(env, i);
-    }
-};
-
-
-template <>
-struct type_cast<int64_t>
-{
-    static int64_t load(ErlNifEnv* env, ERL_NIF_TERM term)
-    {
-        int64_t i;
-        if (!enif_get_int64(env, term, reinterpret_cast<ErlNifSInt64*>(&i)))
-            throw std::invalid_argument("invalid int64");
-        return i;
-    }
-
-    static ERL_NIF_TERM handle(ErlNifEnv* env, int64_t i) noexcept
-    {
-        return enif_make_int64(env, i);
-    }
-};
-
-
-template <>
-struct type_cast<uint64_t>
-{
-    static uint64_t load(ErlNifEnv* env, ERL_NIF_TERM term)
-    {
-        uint64_t i;
-        if (!enif_get_uint64(env, term, reinterpret_cast<ErlNifUInt64*>(&i)))
-            throw std::invalid_argument("invalid uint64");
-        return i;
-    }
-
-    static ERL_NIF_TERM handle(ErlNifEnv* env, uint64_t i) noexcept
-    {
-        return enif_make_uint64(env, i);
-    }
-};
-
-
-template <>
-struct type_cast<double>
-{
-    static double load(ErlNifEnv* env, ERL_NIF_TERM term)
+    static T load(ErlNifEnv* env, ERL_NIF_TERM term)
     {
         double d;
         if (!enif_get_double(env, term, &d))
             throw std::invalid_argument("invalid double");
-        return d;
+        return static_cast<T>(d);
     }
 
-    static ERL_NIF_TERM handle(ErlNifEnv* env, double d) noexcept
+    static ERL_NIF_TERM handle(ErlNifEnv* env, T d) noexcept
     {
-        return enif_make_double(env, d);
+        return enif_make_double(env, static_cast<double>(d));
     }
 };
 
