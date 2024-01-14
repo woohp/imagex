@@ -45,11 +45,12 @@ struct function_traits<R (*)(Args...) noexcept(IsNoexcept)>
 
 
 template <typename GeneratorType>
+    requires(is_yielding_v<GeneratorType>)
 ERL_NIF_TERM coroutine_step_impl(GeneratorType& coro, ErlNifEnv* env)
 {
     try
     {
-        if (auto& out = *std::begin(coro); out)
+        if (const auto& out = *std::begin(coro); out)
         {
             auto ret = type_cast<std::decay_t<decltype(*out)>>::handle(env, *out);
             return ret;
@@ -70,6 +71,7 @@ ERL_NIF_TERM coroutine_step_impl(GeneratorType& coro, ErlNifEnv* env)
 
 
 template <typename GeneratorType>
+    requires(is_yielding_v<GeneratorType>)
 ERL_NIF_TERM coroutine_step(ErlNifEnv* env, int, const ERL_NIF_TERM argv[])
 {
     auto coroutine_resource = type_cast<yielding_resource_t>::load(env, argv[0]);

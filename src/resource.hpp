@@ -2,7 +2,12 @@
 #include <erl_nif.h>
 
 
+template <typename T, typename... Args>
+inline constexpr bool is_brace_constructible_v = requires { T { std::declval<Args>()... }; };
+
+
 template <typename T>
+    requires std::destructible<T>
 class resource
 {
     ErlNifEnv* env;
@@ -38,6 +43,7 @@ public:
     }
 
     template <typename... Args>
+        requires(is_brace_constructible_v<T, Args...>)
     static resource<T> alloc(Args&&... args)
     {
         void* buf = enif_alloc_resource(resource<T>::resource_type, sizeof(T));
@@ -60,4 +66,5 @@ public:
 
 
 template <typename T>
+    requires std::destructible<T>
 ErlNifResourceType* resource<T>::resource_type = nullptr;

@@ -10,17 +10,13 @@ using yielding = cppcoro::generator<std::optional<T>>;
 
 
 template <typename T>
-struct is_yielding
-{
-    static const bool value = false;
-};
+struct is_yielding : std::false_type
+{ };
 
 
 template <typename T>
-struct is_yielding<cppcoro::generator<std::optional<T>>>
-{
-    static const bool value = true;
-};
+struct is_yielding<cppcoro::generator<std::optional<T>>> : std::true_type
+{ };
 
 
 template <typename T>
