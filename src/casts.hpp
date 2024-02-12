@@ -7,6 +7,7 @@
 #include <concepts>
 #include <cstdint>
 #include <erl_nif.h>
+#include <expected>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -335,24 +336,22 @@ public:
 };
 
 
-template <typename OkType, typename ErrorType>
-struct type_cast<erl_result<OkType, ErrorType>>
+template <typename T, typename E>
+struct type_cast<std::expected<T, E>>
 {
 private:
-    typedef erl_result<OkType, ErrorType> erl_result_type;
-    typedef std::tuple<atom, OkType> ok_tuple_type;
-    typedef std::tuple<atom, ErrorType> error_tuple_type;
+    typedef std::expected<T, E> expected_type;
 
 public:
-    static ERL_NIF_TERM handle(ErlNifEnv* env, const erl_result_type& result) noexcept
+    static ERL_NIF_TERM handle(ErlNifEnv* env, const expected_type& result) noexcept
     {
         static ERL_NIF_TERM ok_atom_term = type_cast<atom>::handle(env, "ok"sv);
         static ERL_NIF_TERM error_atom_term = type_cast<atom>::handle(env, "error"sv);
 
-        if (result.index() == 0)
-            return enif_make_tuple2(env, ok_atom_term, type_cast<OkType>::handle(env, std::get<0>(result)));
+        if (result.has_value())
+            return enif_make_tuple2(env, ok_atom_term, type_cast<T>::handle(env, *result));
         else
-            return enif_make_tuple2(env, error_atom_term, type_cast<ErrorType>::handle(env, std::get<1>(result)));
+            return enif_make_tuple2(env, error_atom_term, type_cast<E>::handle(env, result.error()));
     };
 };
 
