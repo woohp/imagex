@@ -576,7 +576,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
         return std::unexpected("JxlEncoderProcessOutput failed");
     }
 
-    return std::move(compressed);
+    return compressed;
 }
 
 
@@ -615,7 +615,7 @@ jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_met
         return std::unexpected("JxlEncoderProcessOutput failed");
     }
 
-    return std::move(compressed);
+    return compressed;
 }
 
 
@@ -669,7 +669,7 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         {
             // All decoding successfully finished.
             // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
-            return std::move(jpeg_bytes);
+            return jpeg_bytes;
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
