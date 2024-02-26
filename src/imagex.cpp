@@ -376,7 +376,7 @@ static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
 #define JXL_ENSURE_SUCCESS(func, ...)                                                                                  \
     if (func(__VA_ARGS__) != 0)                                                                                        \
     {                                                                                                                  \
-        return std::unexpected(#func " failed");                                                                                 \
+        return std::unexpected(#func " failed");                                                                       \
     }
 
 
@@ -696,8 +696,6 @@ struct TIFFWrapper
 };
 
 
-#ifdef HAS_POPPLER
-
 typedef resource<std::unique_ptr<poppler::document>> pdf_resource_t;
 
 
@@ -755,8 +753,6 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 
     return make_tuple(std::move(pixels), width, height, channels);
 }
-
-#endif
 
 typedef resource<TIFFWrapper> tiff_resource_t;
 
