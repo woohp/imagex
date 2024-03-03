@@ -6,10 +6,10 @@ defmodule Imagex.Pdf do
       when page_idx >= 0 and page_idx < num_pages do
     with {:ok, options} <- Keyword.validate(options, dpi: 72) do
       dpi = Keyword.get(options, :dpi)
-      {:ok, {pixels, width, height, channels}} = Imagex.C.pdf_render_page(ref, page_idx, dpi)
+      {:ok, {pixels, width, height, channels, bit_depth, _exif_data}} = Imagex.C.pdf_render_page(ref, page_idx, dpi)
 
       shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-      {:ok, Nx.from_binary(pixels, {:u, 8}) |> Nx.reshape(shape)}
+      {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
     else
       error -> error
     end

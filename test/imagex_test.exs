@@ -12,7 +12,7 @@ defmodule ImagexTest do
   describe "jpeg" do
     test "decode rgb image" do
       jpeg_bytes = File.read!("test/assets/lena.jpg")
-      {:ok, %Tensor{} = image} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert image.type == {:u, 8}
       assert image.shape == {512, 512, 3}
     end
@@ -31,7 +31,7 @@ defmodule ImagexTest do
   describe "png" do
     test "decode rgb image", %{image: test_image} do
       png_bytes = File.read!("test/assets/lena.png")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(png_bytes, format: :png)
       assert image.shape == {512, 512, 3}
 
       # should it be the same as our test PPM image
@@ -46,19 +46,19 @@ defmodule ImagexTest do
 
     test "decode grayscale image" do
       png_bytes = File.read!("test/assets/lena-grayscale.png")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(png_bytes, format: :png)
       assert image.shape == {512, 512}
     end
 
     test "decode palette image" do
       png_bytes = File.read!("test/assets/lena-palette.png")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(png_bytes, format: :png)
       assert image.shape == {512, 512, 3}
     end
 
     test "decode rgba image" do
       png_bytes = File.read!("test/assets/lena-rgba.png")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(png_bytes, format: :png)
       assert image.shape == {512, 512, 4}
       # the alpha channel was set to 75% (or 0.75 * 255)
       assert String.at(Nx.to_binary(image), 3) == <<191>>
@@ -66,7 +66,7 @@ defmodule ImagexTest do
 
     test "decode 16bit image" do
       png_bytes = File.read!("test/assets/16bit.png")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :png)
+      {:ok, {%Tensor{} = image, %{} = exif}} = Imagex.decode(png_bytes, format: :png)
       assert image.shape == {118, 170, 4}
       assert image.type == {:u, 16}
 
@@ -82,6 +82,18 @@ defmodule ImagexTest do
                45663,
                46783
              ]
+
+      assert %{
+               ifd0: %{
+                 exif: %{
+                   pixel_y_dimension: 118,
+                   pixel_x_dimension: 170,
+                   user_comment: [65, 83, 67, 73, 73, 0, 0, 0, 83, 99, 114, 101, 101, 110, 115, 104, 111, 116],
+                   date_time_original: "2022:10:22 00:36:00"
+                 },
+                 orientation: 1
+               }
+             } = exif
     end
 
     test "encode rgb image", %{image: test_image} do
@@ -89,7 +101,7 @@ defmodule ImagexTest do
       assert byte_size(compressed_bytes) < Nx.size(test_image)
 
       # if we decompress again, we should get back the original pixels
-      {:ok, image} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(compressed_bytes, format: :png)
       # should it be the same as our test PPM image
       assert Nx.to_binary(image) == Nx.to_binary(test_image)
       assert image.shape == test_image.shape
@@ -98,42 +110,42 @@ defmodule ImagexTest do
     test "encode rgba image" do
       image1 = Nx.iota({10, 10, 4}, type: :u8)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
 
     test "encode grayscale image" do
       image1 = Nx.iota({10, 10}, type: :u8)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {%Tensor{} = image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
 
     test "encode 16-bit rgb image" do
       image1 = Nx.iota({100, 100, 3}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {%Tensor{} = image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
 
     test "encode 16-bit rgba image" do
       image1 = Nx.iota({100, 100, 4}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {%Tensor{} = image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
 
     test "encode 16-bit grayscale image" do
       image1 = Nx.iota({100, 100}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {%Tensor{} = image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
 
     test "encode 16-bit grayscale-alpha image" do
       image1 = Nx.iota({100, 100, 2}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
+      {:ok, {image2, nil}} = Imagex.decode(compressed_bytes, format: :png)
       assert image2 == image1
     end
   end
@@ -141,25 +153,25 @@ defmodule ImagexTest do
   describe "jpeg-xl" do
     test "decode rgb image" do
       jxl_bytes = File.read!("test/assets/lena.jxl")
-      {:ok, %Tensor{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
       assert image.shape == {512, 512, 3}
     end
 
     test "decode rgba image" do
       jxl_bytes = File.read!("test/assets/lena-rgba.jxl")
-      {:ok, %Tensor{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
       assert image.shape == {512, 512, 4}
     end
 
     test "decode grayscale image" do
       jxl_bytes = File.read!("test/assets/lena-grayscale.jxl")
-      {:ok, %Tensor{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
       assert image.shape == {512, 512}
     end
 
     test "decode 16-bit image" do
       png_bytes = File.read!("test/assets/16bit.jxl")
-      {:ok, %Tensor{} = image} = Imagex.decode(png_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(png_bytes, format: :jxl)
       assert image.shape == {118, 170, 4}
       assert image.type == {:u, 16}
 
@@ -190,7 +202,7 @@ defmodule ImagexTest do
       assert byte_size(compressed_bytes_lossless) > byte_size(compressed_bytes)
 
       # we decompress the lossless compressed bytes, we should get back the exact same input
-      {:ok, roundtrip_image_lossless} = Imagex.decode(compressed_bytes_lossless, format: :jxl)
+      {:ok, {%Tensor{} = roundtrip_image_lossless, nil}} = Imagex.decode(compressed_bytes_lossless, format: :jxl)
       assert roundtrip_image_lossless == test_image
     end
 
@@ -222,7 +234,7 @@ defmodule ImagexTest do
       image = Nx.iota({8, 8, 3}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
 
-      {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+      {:ok, {%Tensor{} = decoded_image, nil}} = Imagex.decode(compressed_bytes, format: :jxl)
       assert decoded_image == image
     end
 
@@ -230,7 +242,7 @@ defmodule ImagexTest do
       image = Nx.iota({8, 8, 4}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
 
-      {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+      {:ok, {%Tensor{} = decoded_image, nil}} = Imagex.decode(compressed_bytes, format: :jxl)
       assert decoded_image == image
     end
 
@@ -238,7 +250,7 @@ defmodule ImagexTest do
       image = Nx.iota({8, 8, 2}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
 
-      {:ok, %Tensor{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+      {:ok, {%Tensor{} = decoded_image, nil}} = Imagex.decode(compressed_bytes, format: :jxl)
       assert decoded_image == image
     end
 
@@ -250,8 +262,8 @@ defmodule ImagexTest do
       {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
       assert byte_size(jxl_bytes) < byte_size(jpeg_bytes)
 
-      {:ok, image_from_jxl} = Imagex.decode(jxl_bytes, format: :jxl)
-      {:ok, image_from_jpeg} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image_from_jxl, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image_from_jpeg, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       max_diff =
         Nx.subtract(
@@ -289,7 +301,7 @@ defmodule ImagexTest do
       assert byte_size(jpeg_bytes) == 68750
 
       # should be able to decode the jpeg bytes
-      {:ok, image} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert image.shape == {512, 512, 3}
     end
 
@@ -330,13 +342,13 @@ defmodule ImagexTest do
   end
 
   test "generic decode" do
-    {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.jpg"))
+    {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
     assert image.shape == {512, 512, 3}
 
-    {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.png"))
+    {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.png"))
     assert image.shape == {512, 512, 3}
 
-    {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.jxl"))
+    {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.jxl"))
     assert image.shape == {512, 512, 3}
 
     {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
@@ -346,7 +358,7 @@ defmodule ImagexTest do
   end
 
   test "open from path directly" do
-    {:ok, %Tensor{} = image} = Imagex.open("test/assets/lena.jpg")
+    {:ok, {%Tensor{} = image, nil}} = Imagex.open("test/assets/lena.jpg")
     assert image.shape == {512, 512, 3}
   end
 

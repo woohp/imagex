@@ -6,9 +6,17 @@ defmodule Imagex do
   defguardp is_image(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
-  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth}}) do
+  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}) do
+    exif_data =
+      if is_binary(exif_binary) do
+        {:ok, exif_data} = ExifParser.parse_tiff_binary(exif_binary)
+        exif_data
+      else
+        nil
+      end
+
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-    {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
+    {:ok, {Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape), exif_data}}
   end
 
   defp to_tensor({:error, _error_msg} = output) do

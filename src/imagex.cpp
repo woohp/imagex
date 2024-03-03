@@ -28,8 +28,8 @@
 
 using namespace std;
 
-// pixels, width, height, channels, bit_depth
-typedef tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t> decompress_result_t;
+// pixels, width, height, channels, bit_depth, optional<exif>
+typedef tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t, optional<binary>> decompress_result_t;
 
 
 void jpeg_error_exit(j_common_ptr cinfo)
@@ -87,7 +87,9 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
             cinfo.output_width,
             cinfo.output_height,
             static_cast<uint32_t>(cinfo.num_components),
-            8u);
+            8u,
+            nullopt
+            );
     }
     catch (erl_error<string>& e)
     {
@@ -272,10 +274,26 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             }
         }
 
+        // read the exif data
+        optional<binary> exif_data = nullopt;
+        {
+            png_bytep exif = nullptr;
+            png_uint_32 exif_length;
+            if (png_get_eXIf_1(png_ptr, info_ptr, &exif_length, &exif) != 0)
+            {
+                if (exif_length > 0)
+                {
+                    exif_data = binary(exif_length);
+                    std::copy_n(exif, exif_length, exif_data->data);
+                    // png_free(png_ptr, exif);
+                }
+            }
+        }
+
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        co_yield make_tuple(std::move(output), width, height, channels, bit_depth);
+        co_yield make_tuple(std::move(output), width, height, channels, bit_depth, std::move(exif_data));
     }
     catch (erl_error<string>& e)
     {
@@ -507,7 +525,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         {
             // All decoding successfully finished.
             // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
-            return make_tuple(std::move(pixels), width, height, channels, bit_depth);
+            return make_tuple(std::move(pixels), width, height, channels, bit_depth, nullopt);
         }
         else
         {
@@ -717,7 +735,7 @@ expected<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes
 }
 
 
-expected<tuple<binary, uint32_t, uint32_t, uint32_t>, string_view>
+expected<decompress_result_t, string_view>
 pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 {
     auto& document = document_resource.get();
@@ -751,7 +769,7 @@ pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
 
-    return make_tuple(std::move(pixels), width, height, channels);
+    return make_tuple(std::move(pixels), width, height, channels, 8u, nullopt);
 }
 
 typedef resource<TIFFWrapper> tiff_resource_t;
@@ -775,7 +793,7 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
 }
 
 
-expected<tuple<binary, uint32_t, uint32_t, uint32_t>, string_view>
+expected<decompress_result_t, string_view>
 tiff_render_page(tiff_resource_t document_resource, int page_index)
 {
     auto& [document, _] = document_resource.get();
@@ -789,7 +807,7 @@ tiff_render_page(tiff_resource_t document_resource, int page_index)
     binary pixels { static_cast<size_t>(width * height * 4) };
     TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), 1, 0);
 
-    return make_tuple(std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u);
+    return make_tuple(std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u, nullopt);
 }
 
 
