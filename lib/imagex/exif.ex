@@ -351,7 +351,7 @@ defmodule Imagex.Exif do
         {:exif, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
 
       :gps_info_ifd_pointer ->
-        {:gps_info,
+        {:gps,
          parse_ifds(bytes, endian, data_value)
          |> hd()
          |> Enum.map(fn {key, value} = entry ->

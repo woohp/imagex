@@ -36,7 +36,7 @@ defmodule ExifTest do
 
   test "exif with rgb thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-sony-d700.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -90,7 +90,7 @@ defmodule ExifTest do
 
   test "exif with jpeg thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd1: %{
@@ -113,7 +113,7 @@ defmodule ExifTest do
 
   test "exif with empty icc profile" do
     jpeg_bytes = File.read!("test/assets/exif/exif-empty-icc-profile.jpeg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert exif == %{
              ifd0: %{
@@ -134,7 +134,7 @@ defmodule ExifTest do
 
   test "exif with jfif-app13" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jfif-app13-app14ycck-3channel.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -159,7 +159,7 @@ defmodule ExifTest do
 
   test "exif with bad-exif-kodak-dc210" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -212,18 +212,18 @@ defmodule ExifTest do
 
   test "long description" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
     assert %{ifd0: %{}, ifd1: %{}} = exif
   end
 
   describe "GPS exif" do
     test "DSCN0010.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0010.jpg")
-      {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
       assert %{
                ifd0: %{
-                 gps_info: %{
+                 gps: %{
                    longitude_ref: "E",
                    longitude: [{11, 1}, {53, 1}, {645_599_999, 100_000_000}],
                    altitude_ref: 0,
@@ -241,11 +241,11 @@ defmodule ExifTest do
 
     test "DSCN0012.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0012.jpg")
-      {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
       assert %{
                ifd0: %{
-                 gps_info: %{
+                 gps: %{
                    longitude_ref: "E",
                    longitude: [{11, 1}, {53, 1}, {742_199_999, 100_000_000}],
                    altitude_ref: 0,
