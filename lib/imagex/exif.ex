@@ -379,6 +379,6 @@ defmodule Imagex.Exif do
 
   defp decode_rational(buffer, signed, endian) do
     <<numerator::binary-size(4), denominator::binary-size(4)>> = buffer
-    decode_integer(numerator, 4, signed, endian) / decode_integer(denominator, 4, signed, endian)
+    {decode_integer(numerator, 4, signed, endian), decode_integer(denominator, 4, signed, endian)}
   end
 end
