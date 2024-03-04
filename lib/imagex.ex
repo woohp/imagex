@@ -9,8 +9,7 @@ defmodule Imagex do
   defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}) do
     exif_data =
       if is_binary(exif_binary) do
-        {:ok, exif_data} = ExifParser.parse_tiff_binary(exif_binary)
-        exif_data
+        Imagex.Exif.read_exif_from_tiff(exif_binary)
       else
         nil
       end
@@ -94,7 +93,13 @@ defmodule Imagex do
   def decode(bytes, options \\ []) do
     case Keyword.get_lazy(options, :format, fn -> Imagex.Detect.detect(bytes) end) do
       :jpeg ->
-        to_tensor(Imagex.C.jpeg_decompress(bytes))
+        case to_tensor(Imagex.C.jpeg_decompress(bytes)) do
+          {:ok, {image, nil}} ->
+            {:ok, {image, Imagex.Exif.read_exif_from_jpeg(bytes)}}
+
+          {:error, _error_msg} = error ->
+            error
+        end
 
       :png ->
         to_tensor(Imagex.C.png_decompress(bytes))

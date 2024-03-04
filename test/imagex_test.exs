@@ -4,6 +4,15 @@ defmodule ImagexTest do
 
   alias Nx.Tensor
 
+  # the exif for lena.jpg
+  @lena_exif %{
+    exif: %{pixel_y_dimension: 512, pixel_x_dimension: 512, color_space: 1},
+    orientation: 1,
+    resolution_unit: 2,
+    y_resolution: 72.0,
+    x_resolution: 72.0
+  }
+
   setup do
     {:ok, image} = Imagex.decode(File.read!("test/assets/lena.ppm"), format: :ppm)
     {:ok, image: image}
@@ -12,7 +21,7 @@ defmodule ImagexTest do
   describe "jpeg" do
     test "decode rgb image" do
       jpeg_bytes = File.read!("test/assets/lena.jpg")
-      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image, @lena_exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert image.type == {:u, 8}
       assert image.shape == {512, 512, 3}
     end
@@ -84,15 +93,13 @@ defmodule ImagexTest do
              ]
 
       assert %{
-               ifd0: %{
-                 exif: %{
-                   pixel_y_dimension: 118,
-                   pixel_x_dimension: 170,
-                   user_comment: [65, 83, 67, 73, 73, 0, 0, 0, 83, 99, 114, 101, 101, 110, 115, 104, 111, 116],
-                   date_time_original: "2022:10:22 00:36:00"
-                 },
-                 orientation: 1
-               }
+               exif: %{
+                 pixel_y_dimension: 118,
+                 pixel_x_dimension: 170,
+                 user_comment: [65, 83, 67, 73, 73, 0, 0, 0, 83, 99, 114, 101, 101, 110, 115, 104, 111, 116],
+                 date_time_original: "2022:10:22 00:36:00"
+               },
+               orientation: 1
              } = exif
     end
 
@@ -263,7 +270,7 @@ defmodule ImagexTest do
       assert byte_size(jxl_bytes) < byte_size(jpeg_bytes)
 
       {:ok, {%Tensor{} = image_from_jxl, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
-      {:ok, {%Tensor{} = image_from_jpeg, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image_from_jpeg, @lena_exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       max_diff =
         Nx.subtract(
@@ -301,7 +308,7 @@ defmodule ImagexTest do
       assert byte_size(jpeg_bytes) == 68750
 
       # should be able to decode the jpeg bytes
-      {:ok, {%Tensor{} = image, nil}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image, @lena_exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert image.shape == {512, 512, 3}
     end
 
@@ -342,7 +349,7 @@ defmodule ImagexTest do
   end
 
   test "generic decode" do
-    {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
+    {:ok, {%Tensor{} = image, @lena_exif}} = Imagex.decode(File.read!("test/assets/lena.jpg"))
     assert image.shape == {512, 512, 3}
 
     {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.png"))
@@ -358,7 +365,7 @@ defmodule ImagexTest do
   end
 
   test "open from path directly" do
-    {:ok, {%Tensor{} = image, nil}} = Imagex.open("test/assets/lena.jpg")
+    {:ok, {%Tensor{} = image, @lena_exif}} = Imagex.open("test/assets/lena.jpg")
     assert image.shape == {512, 512, 3}
   end
 

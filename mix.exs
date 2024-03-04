@@ -35,7 +35,6 @@ defmodule Imagex.MixProject do
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
       {:nx, "~> 0.7"},
-      {:exif_parser, "~> 0.3"}
     ]
   end
 end
