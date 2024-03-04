@@ -121,7 +121,7 @@ defmodule ExifTest do
                  pixel_y_dimension: 3600,
                  pixel_x_dimension: 2700,
                  exif_version: ~c"0220",
-                 interoperability_ifd_pointer: 188,
+                 interoperability: %{interoperability_version: ~c"0100", interoperability_index: "R98"},
                  sub_sec_time: "567"
                },
                orientation: 1,
@@ -208,5 +208,57 @@ defmodule ExifTest do
                thumbnail_data: _thumbnail_data
              }
            } = exif
+  end
+
+  test "long description" do
+    jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
+    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    assert %{ifd0: %{}, ifd1: %{}} = exif
+  end
+
+  describe "GPS exif" do
+    test "DSCN0010.jpg" do
+      jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0010.jpg")
+      {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+      assert %{
+               ifd0: %{
+                 gps_info: %{
+                   longitude_ref: "E",
+                   longitude: [{11, 1}, {53, 1}, {645_599_999, 100_000_000}],
+                   altitude_ref: 0,
+                   time_stamp: [{14, 1}, {27, 1}, {724, 100}],
+                   satellites: "06",
+                   img_direction_ref: "",
+                   map_datum: "WGS-84   ",
+                   date_stamp: "2008:10:23",
+                   latitude_ref: "N",
+                   latitude: [{43, 1}, {28, 1}, {281_400_000, 100_000_000}]
+                 }
+               }
+             } = exif
+    end
+
+    test "DSCN0012.jpg" do
+      jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0012.jpg")
+      {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+      assert %{
+               ifd0: %{
+                 gps_info: %{
+                   longitude_ref: "E",
+                   longitude: [{11, 1}, {53, 1}, {742_199_999, 100_000_000}],
+                   altitude_ref: 0,
+                   time_stamp: [{14, 1}, {28, 1}, {17240, 1000}],
+                   satellites: "06",
+                   img_direction_ref: "",
+                   map_datum: "WGS-84   ",
+                   date_stamp: "2008:10:23",
+                   latitude_ref: "N",
+                   latitude: [{43, 1}, {28, 1}, {176_399_999, 100_000_000}]
+                 }
+               }
+             } = exif
+    end
   end
 end

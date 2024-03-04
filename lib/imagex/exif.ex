@@ -40,35 +40,11 @@ defmodule Imagex.Exif do
     exif =
       parse_ifds(bytes, endian, offset)
 
-      # perform additional processing for each IDF
-      |> Enum.map(fn ifd ->
-        # for each IFD, process exif/gps/interoperability IFDs if they exist
-        ifd
-        |> Enum.map(fn {tag, data_value} ->
-          case tag do
-            :exif_ifd_pointer ->
-              {:exif, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
-
-            :gps_info_ifd_pointer ->
-              {:gps_info, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
-
-            :interoperability_ifd_pointer ->
-              {:interoperability, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
-
-            _ ->
-              {tag, data_value}
-          end
-        end)
-
-        # finally convert IFD to a map
-        |> Enum.into(%{})
-      end)
-
       # for each IFD, give it a name ifd#n where n is its index, and put them all into a map
       |> Enum.with_index(fn element, index -> {String.to_atom("ifd#{index}"), element} end)
       |> Enum.into(%{})
 
-    # finally, if we have a thumbnail, extract the binary of the thumbnail
+    # if we have a thumbnail, extract the binary of the thumbnail
     case exif do
       %{ifd1: %{compression: 1, strip_offsets: strip_offsets, strip_byte_counts: strip_byte_counts}} ->
         strip_byte_counts_sum =
@@ -111,7 +87,7 @@ defmodule Imagex.Exif do
         parse_tag(chunk, endian, bytes)
       end
 
-    [tags | parse_ifds(bytes, endian, next_idf_offset)]
+    [Enum.into(tags, %{}) | parse_ifds(bytes, endian, next_idf_offset)]
   end
 
   def parse_tag(chunk, endian, bytes) do
@@ -289,6 +265,40 @@ defmodule Imagex.Exif do
         0xA500 -> :gamma
         0xC4A5 -> :print_image_matching
         0xEA1C -> :padding
+        # GPS tags overlap with above ones.
+        0x0000 -> :version_id
+        # overlaps with :interoperability_index and :interoperability_version
+        # 0x0001 -> :latitude_ref
+        # 0x0002 -> :latitude
+        0x0003 -> :longitude_ref
+        0x0004 -> :longitude
+        0x0005 -> :altitude_ref
+        0x0006 -> :altitude
+        0x0007 -> :time_stamp
+        0x0008 -> :satellites
+        0x0009 -> :status
+        0x000A -> :measure_mode
+        0x000B -> :dop
+        0x000C -> :speed_ref
+        0x000D -> :speed
+        0x000E -> :track_ref
+        0x000F -> :track
+        0x0010 -> :img_direction_ref
+        0x0011 -> :img_direction
+        0x0012 -> :map_datum
+        0x0013 -> :dest_latitude_ref
+        0x0014 -> :dest_latitude
+        0x0015 -> :dest_longitude_ref
+        0x0016 -> :dest_longitude
+        0x0017 -> :dest_bearing_ref
+        0x0018 -> :dest_bearing
+        0x0019 -> :dest_distance_ref
+        0x001A -> :dest_distance
+        0x001B -> :processing_method
+        0x001C -> :area_information
+        0x001D -> :date_stamp
+        0x001E -> :differential
+        0x001F -> :h_positioning_error
       end
 
     decode_multiple = fn fun, args ->
@@ -335,7 +345,31 @@ defmodule Imagex.Exif do
           decode_multiple.(&decode_integer/4, [1, false, endian])
       end
 
-    {tag_name, data_value}
+    # for pointers, follow the pointer and parse the IFD instead of returning the pointer
+    case tag_name do
+      :exif_ifd_pointer ->
+        {:exif, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
+
+      :gps_info_ifd_pointer ->
+        {:gps_info,
+         parse_ifds(bytes, endian, data_value)
+         |> hd()
+         |> Enum.map(fn {key, value} = entry ->
+           # we need to replace a couple of tag names because they overlap with other tags
+           case key do
+             :interoperability_index -> {:latitude_ref, value}
+             :interoperability_version -> {:latitude, value}
+             _ -> entry
+           end
+         end)
+         |> Enum.into(%{})}
+
+      :interoperability_ifd_pointer ->
+        {:interoperability, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
+
+      _ ->
+        {tag_name, data_value}
+    end
   end
 
   defp decode_maybe_multiple(fun, count, bytes_per_component, data_value, args) do
