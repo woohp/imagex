@@ -37,35 +37,69 @@ defmodule Imagex.Exif do
     offset = :binary.decode_unsigned(offset, endian)
 
     # parse the Image File Directory (IFD)
-    tags = find_idf_tags(bytes, endian, offset)
+    exif =
+      parse_ifds(bytes, endian, offset)
 
-    # process exif/gps/interoperability IFDs if they exist
-    tags
-    |> Enum.map(fn {tag, data_value} ->
-      case tag do
-        :exif_ifd_pointer ->
-          {:exif, Enum.into(find_idf_tags(bytes, endian, data_value), %{})}
+      # perform additional processing for each IDF
+      |> Enum.map(fn ifd ->
+        # for each IFD, process exif/gps/interoperability IFDs if they exist
+        ifd
+        |> Enum.map(fn {tag, data_value} ->
+          case tag do
+            :exif_ifd_pointer ->
+              {:exif, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
 
-        :gps_info_ifd_pointer ->
-          {:gps_info, Enum.into(find_idf_tags(bytes, endian, data_value), %{})}
+            :gps_info_ifd_pointer ->
+              {:gps_info, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
 
-        :interoperability_ifd_pointer ->
-          {:interoperability, Enum.into(find_idf_tags(bytes, endian, data_value), %{})}
+            :interoperability_ifd_pointer ->
+              {:interoperability, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
 
-        _ ->
-          {tag, data_value}
-      end
-    end)
+            _ ->
+              {tag, data_value}
+          end
+        end)
 
-    # finally convert to a map
-    |> Enum.into(%{})
+        # finally convert IFD to a map
+        |> Enum.into(%{})
+      end)
+
+      # for each IFD, give it a name ifd#n where n is its index, and put them all into a map
+      |> Enum.with_index(fn element, index -> {String.to_atom("ifd#{index}"), element} end)
+      |> Enum.into(%{})
+
+    # finally, if we have a thumbnail, extract the binary of the thumbnail
+    case exif do
+      %{ifd1: %{compression: 1, strip_offsets: strip_offsets, strip_byte_counts: strip_byte_counts}} ->
+        strip_byte_counts_sum =
+          case strip_byte_counts do
+            counts when is_list(counts) -> Enum.sum(counts)
+            count when is_integer(count) -> count
+          end
+
+        thumbnail_data = binary_part(bytes, strip_offsets, strip_byte_counts_sum)
+        put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
+
+      %{
+        ifd1: %{
+          compression: 6,
+          jpeg_interchange_format: jpeg_interchange_format,
+          jpeg_interchange_format_length: jpeg_interchange_format_length
+        }
+      } ->
+        thumbnail_data = binary_part(bytes, jpeg_interchange_format, jpeg_interchange_format_length)
+        put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
+
+      _ ->
+        exif
+    end
   end
 
-  def find_idf_tags(_bytes, _endian, 0) do
+  def parse_ifds(_bytes, _endian, 0) do
     []
   end
 
-  def find_idf_tags(bytes, endian, offset) do
+  def parse_ifds(bytes, endian, offset) do
     <<_::binary-size(offset), num_entries::binary-size(2), rest::binary>> = bytes
     num_entries = :binary.decode_unsigned(num_entries, endian)
 
@@ -77,7 +111,7 @@ defmodule Imagex.Exif do
         parse_tag(chunk, endian, bytes)
       end
 
-    tags ++ find_idf_tags(bytes, endian, next_idf_offset)
+    [tags | parse_ifds(bytes, endian, next_idf_offset)]
   end
 
   def parse_tag(chunk, endian, bytes) do
