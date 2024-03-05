@@ -4,7 +4,7 @@ defmodule ExifTest do
 
   test "exif from lena.jpg" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
-    {:ok, {_image, exif}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    {:ok, {_image, %{exif: exif} = _metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
     assert exif == %{
              ifd0: %{
@@ -19,7 +19,7 @@ defmodule ExifTest do
 
   test "exif from png file" do
     png_bytes = File.read!("test/assets/16bit.png")
-    {:ok, {_image, exif}} = Imagex.decode(png_bytes, format: :png)
+    {:ok, {_image, %{exif: exif}}} = Imagex.decode(png_bytes, format: :png)
 
     assert exif == %{
              ifd0: %{
@@ -36,7 +36,7 @@ defmodule ExifTest do
 
   test "exif with rgb thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-sony-d700.jpg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -90,7 +90,7 @@ defmodule ExifTest do
 
   test "exif with jpeg thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd1: %{
@@ -108,12 +108,12 @@ defmodule ExifTest do
     assert byte_size(thumbnail_data) == 7935
 
     # the jpeg can be decoded from the thumbnail data
-    assert {:ok, {_image, nil}} = Imagex.decode(thumbnail_data, format: :jpeg)
+    assert {:ok, {_image, _metadata}} = Imagex.decode(thumbnail_data, format: :jpeg)
   end
 
   test "exif with empty icc profile" do
     jpeg_bytes = File.read!("test/assets/exif/exif-empty-icc-profile.jpeg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert exif == %{
              ifd0: %{
@@ -134,7 +134,7 @@ defmodule ExifTest do
 
   test "exif with jfif-app13" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jfif-app13-app14ycck-3channel.jpg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -159,7 +159,7 @@ defmodule ExifTest do
 
   test "exif with bad-exif-kodak-dc210" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -212,14 +212,14 @@ defmodule ExifTest do
 
   test "long description" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
     assert %{ifd0: %{}, ifd1: %{}} = exif
   end
 
   describe "GPS exif" do
     test "DSCN0010.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0010.jpg")
-      exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+      %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
       assert %{
                ifd0: %{
@@ -241,7 +241,7 @@ defmodule ExifTest do
 
     test "DSCN0012.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0012.jpg")
-      exif = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+      %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
 
       assert %{
                ifd0: %{

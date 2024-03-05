@@ -6,22 +6,8 @@ defmodule Imagex.Exif do
   https://www.media.mit.edu/pia/Research/deepview/exif.html
   """
 
-  @jpeg_start_of_image 0xFFD8
-
   def read_exif_from_jpeg(bytes) when is_binary(bytes) do
-    case bytes do
-      <<@jpeg_start_of_image::16, 0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, app1_data::binary>> ->
-        read_exif_from_tiff(app1_data)
-
-      <<@jpeg_start_of_image::16, 0xFFE0::16, len::16, rest::binary>> ->
-        len = len - 2
-        <<_skip::size(len)-unit(8), rest::binary>> = rest
-        <<0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, app1_data::binary>> = rest
-        read_exif_from_tiff(app1_data)
-
-      _ ->
-        nil
-    end
+    Imagex.Jfif.read_metadata_from_jpeg(bytes)
   end
 
   def read_exif_from_tiff(app1_data) do
@@ -45,30 +31,33 @@ defmodule Imagex.Exif do
       |> Enum.into(%{})
 
     # if we have a thumbnail, extract the binary of the thumbnail
-    case exif do
-      %{ifd1: %{compression: 1, strip_offsets: strip_offsets, strip_byte_counts: strip_byte_counts}} ->
-        strip_byte_counts_sum =
-          case strip_byte_counts do
-            counts when is_list(counts) -> Enum.sum(counts)
-            count when is_integer(count) -> count
-          end
+    exif =
+      case exif do
+        %{ifd1: %{compression: 1, strip_offsets: strip_offsets, strip_byte_counts: strip_byte_counts}} ->
+          strip_byte_counts_sum =
+            case strip_byte_counts do
+              counts when is_list(counts) -> Enum.sum(counts)
+              count when is_integer(count) -> count
+            end
 
-        thumbnail_data = binary_part(app1_data, strip_offsets, strip_byte_counts_sum)
-        put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
+          thumbnail_data = binary_part(app1_data, strip_offsets, strip_byte_counts_sum)
+          put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
 
-      %{
-        ifd1: %{
-          compression: 6,
-          jpeg_interchange_format: jpeg_interchange_format,
-          jpeg_interchange_format_length: jpeg_interchange_format_length
-        }
-      } ->
-        thumbnail_data = binary_part(app1_data, jpeg_interchange_format, jpeg_interchange_format_length)
-        put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
+        %{
+          ifd1: %{
+            compression: 6,
+            jpeg_interchange_format: jpeg_interchange_format,
+            jpeg_interchange_format_length: jpeg_interchange_format_length
+          }
+        } ->
+          thumbnail_data = binary_part(app1_data, jpeg_interchange_format, jpeg_interchange_format_length)
+          put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
 
-      _ ->
-        exif
-    end
+        _ ->
+          exif
+      end
+
+    %{exif: exif}
   end
 
   def parse_ifds(_app1_data, _endian, 0) do
