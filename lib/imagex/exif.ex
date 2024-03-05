@@ -10,23 +10,23 @@ defmodule Imagex.Exif do
 
   def read_exif_from_jpeg(bytes) when is_binary(bytes) do
     case bytes do
-      <<@jpeg_start_of_image::16, 0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, rest::binary>> ->
-        read_exif_from_tiff(rest)
+      <<@jpeg_start_of_image::16, 0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, app1_data::binary>> ->
+        read_exif_from_tiff(app1_data)
 
-      <<@jpeg_start_of_image::16, 0xFF::8, 0xE::4, _e::4, len::16, rest::binary>> ->
+      <<@jpeg_start_of_image::16, 0xFFE0::16, len::16, rest::binary>> ->
         len = len - 2
         <<_skip::size(len)-unit(8), rest::binary>> = rest
-        <<0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, rest::binary>> = rest
-        read_exif_from_tiff(rest)
+        <<0xFFE1::16, _app1_data_length::16-big, "Exif"::binary, 0::16, app1_data::binary>> = rest
+        read_exif_from_tiff(app1_data)
 
       _ ->
         nil
     end
   end
 
-  def read_exif_from_tiff(bytes) do
-    # first, parse the header
-    <<tiff_header::binary-size(8), _rest::binary>> = bytes
+  def read_exif_from_tiff(app1_data) do
+    # first, parse the header for the endian and offset
+    <<tiff_header::binary-size(8), _rest::binary>> = app1_data
 
     {endian, offset} =
       case tiff_header do
@@ -38,7 +38,7 @@ defmodule Imagex.Exif do
 
     # parse the Image File Directory (IFD)
     exif =
-      parse_ifds(bytes, endian, offset)
+      parse_ifds(app1_data, endian, offset)
 
       # for each IFD, give it a name ifd#n where n is its index, and put them all into a map
       |> Enum.with_index(fn element, index -> {String.to_atom("ifd#{index}"), element} end)
@@ -53,7 +53,7 @@ defmodule Imagex.Exif do
             count when is_integer(count) -> count
           end
 
-        thumbnail_data = binary_part(bytes, strip_offsets, strip_byte_counts_sum)
+        thumbnail_data = binary_part(app1_data, strip_offsets, strip_byte_counts_sum)
         put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
 
       %{
@@ -63,7 +63,7 @@ defmodule Imagex.Exif do
           jpeg_interchange_format_length: jpeg_interchange_format_length
         }
       } ->
-        thumbnail_data = binary_part(bytes, jpeg_interchange_format, jpeg_interchange_format_length)
+        thumbnail_data = binary_part(app1_data, jpeg_interchange_format, jpeg_interchange_format_length)
         put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
 
       _ ->
@@ -71,12 +71,12 @@ defmodule Imagex.Exif do
     end
   end
 
-  def parse_ifds(_bytes, _endian, 0) do
+  def parse_ifds(_app1_data, _endian, 0) do
     []
   end
 
-  def parse_ifds(bytes, endian, offset) do
-    <<_::binary-size(offset), num_entries::binary-size(2), rest::binary>> = bytes
+  def parse_ifds(app1_data, endian, offset) do
+    <<_::binary-size(offset), num_entries::binary-size(2), rest::binary>> = app1_data
     num_entries = :binary.decode_unsigned(num_entries, endian)
 
     <<idf_buffer::binary-size(num_entries * 12), next_idf_offset::binary-size(4), _rest::binary>> = rest
@@ -84,13 +84,13 @@ defmodule Imagex.Exif do
 
     tags =
       for <<chunk::binary-size(12) <- idf_buffer>> do
-        parse_tag(chunk, endian, bytes)
+        parse_tag(chunk, endian, app1_data)
       end
 
-    [Enum.into(tags, %{}) | parse_ifds(bytes, endian, next_idf_offset)]
+    [Enum.into(tags, %{}) | parse_ifds(app1_data, endian, next_idf_offset)]
   end
 
-  def parse_tag(chunk, endian, bytes) do
+  def parse_tag(chunk, endian, app1_data) do
     <<tag_id::binary-size(2), data_format::binary-size(2), num_components::binary-size(4), data_value::binary-size(4)>> =
       chunk
 
@@ -119,7 +119,7 @@ defmodule Imagex.Exif do
     data_value =
       if total_bytes_size > 4 do
         value_offset = :binary.decode_unsigned(data_value, endian)
-        <<_::binary-size(value_offset), data_value::binary-size(total_bytes_size), _::binary>> = bytes
+        <<_::binary-size(value_offset), data_value::binary-size(total_bytes_size), _::binary>> = app1_data
         data_value
       else
         data_value
@@ -348,11 +348,11 @@ defmodule Imagex.Exif do
     # for pointers, follow the pointer and parse the IFD instead of returning the pointer
     case tag_name do
       :exif_ifd_pointer ->
-        {:exif, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
+        {:exif, parse_ifds(app1_data, endian, data_value) |> hd() |> Enum.into(%{})}
 
       :gps_info_ifd_pointer ->
         {:gps,
-         parse_ifds(bytes, endian, data_value)
+         parse_ifds(app1_data, endian, data_value)
          |> hd()
          |> Enum.map(fn {key, value} = entry ->
            # we need to replace a couple of tag names because they overlap with other tags
@@ -365,7 +365,7 @@ defmodule Imagex.Exif do
          |> Enum.into(%{})}
 
       :interoperability_ifd_pointer ->
-        {:interoperability, parse_ifds(bytes, endian, data_value) |> hd() |> Enum.into(%{})}
+        {:interoperability, parse_ifds(app1_data, endian, data_value) |> hd() |> Enum.into(%{})}
 
       _ ->
         {tag_name, data_value}
