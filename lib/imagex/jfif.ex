@@ -26,13 +26,27 @@ defmodule Imagex.Jfif do
           {Imagex.Exif.read_exif_from_tiff(app1_data), rest}
 
         _ ->
-          {%{}, nil}
+          {nil, nil}
       end
 
-    if is_nil(rest) do
-      metadata
+    if is_nil(metadata) do
+      nil
     else
-      Map.merge(metadata, read_metadata_from_jpeg_impl(rest))
+      rest_metadata = read_metadata_from_jpeg_impl(rest)
+
+      cond do
+        is_nil(rest_metadata) ->
+          metadata
+
+        # recursively merge the jfif metadata, if necessary
+        Map.has_key?(rest_metadata, :jfif) and Map.has_key?(metadata, :jfif) ->
+          {jfif1, metadata} = Map.pop(metadata, :jfif)
+          {jfif2, rest_metadata} = Map.pop(rest_metadata, :jfif)
+          Map.merge(Map.merge(metadata, rest_metadata), %{jfif: Map.merge(jfif1, jfif2)})
+
+        true ->
+          Map.merge(metadata, rest_metadata)
+      end
     end
   end
 
@@ -59,12 +73,12 @@ defmodule Imagex.Jfif do
   defp parse_jfif(<<"JFXX\0"::binary, thumbnail_format::8, rest::binary>> = _app0_data) do
     out =
       case thumbnail_format do
-        10 ->
-          thumbnail_data_size = byte_size(rest) - 4
-          <<0xFFD8::16, thumbnail_data::binary-size(thumbnail_data_size), 0xFFD9::16>> = rest
-          %{thumbnail_format: thumbnail_format, thumbnail_data: thumbnail_data}
+        0x10 ->
+          # TODO: doesn't seem to be quite working yet...
+          # thumbnail_data_size = byte_size(rest) - 4
+          %{thumbnail_format: thumbnail_format, thumbnail_data: :not_working_yet}
 
-        11 ->
+        0x11 ->
           <<thumbnail_width::8, thumbnail_height::8, thumbnail_palette::binary-size(768), thumbnail_data::binary>> =
             rest
 
@@ -76,7 +90,7 @@ defmodule Imagex.Jfif do
             thumbnail_data: thumbnail_data
           }
 
-        12 ->
+        0x12 ->
           <<thumbnail_width::8, thumbnail_height::8, thumbnail_data::binary>> = rest
 
           %{
@@ -88,5 +102,9 @@ defmodule Imagex.Jfif do
       end
 
     %{jfif: out}
+  end
+
+  defp parse_jfif(_) do
+    nil
   end
 end
