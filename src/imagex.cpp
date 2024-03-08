@@ -88,8 +88,7 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
             cinfo.output_height,
             static_cast<uint32_t>(cinfo.num_components),
             8u,
-            nullopt
-            );
+            nullopt);
     }
     catch (erl_error<string>& e)
     {
@@ -451,16 +450,24 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
 
     auto dec = JxlDecoderMake(nullptr);
     JXL_ENSURE_SUCCESS(
-        JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE);
+        JxlDecoderSubscribeEvents,
+        dec.get(),
+        JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE | JXL_DEC_BOX);
     JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
+    JXL_ENSURE_SUCCESS(JxlDecoderSetDecompressBoxes, dec.get(), JXL_TRUE);
 
-    JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
+    JXL_ENSURE_SUCCESS(JxlDecoderSetInput, dec.get(), jxl_bytes.data, jxl_bytes.size);
 
     binary pixels;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t channels = 0;
     uint32_t bit_depth = 0;
+    uint32_t exponent_bits_per_sample = 0;
+
+    const constexpr size_t chunk_size = 0xffff;
+    std::vector<uint8_t> exif_data;
+    optional<binary> exif_data_final = nullopt;
 
     for (;;)
     {
@@ -472,7 +479,9 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return std::unexpected("Error, already provided all input");
+            JxlDecoderReleaseInput(dec.get());
+            JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
+            // return std::unexpected("Error, already provided all input");
         }
         else if (status == JXL_DEC_BASIC_INFO)
         {
@@ -486,6 +495,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             height = info.ysize;
             channels = info.num_color_channels + info.num_extra_channels;
             bit_depth = info.bits_per_sample;
+            exponent_bits_per_sample = info.exponent_bits_per_sample;
         }
         else if (status == JXL_DEC_COLOR_ENCODING)
         {
@@ -503,8 +513,21 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
-            JxlPixelFormat format
-                = { channels, bit_depth == 8 ? JXL_TYPE_UINT8 : JXL_TYPE_UINT16, JXL_NATIVE_ENDIAN, 0 };
+            JxlDataType data_type;
+            if (bit_depth == 8)
+                data_type = JXL_TYPE_UINT8;
+            else if (bit_depth == 16)
+            {
+                if (exponent_bits_per_sample > 0)
+                    data_type = JXL_TYPE_FLOAT;  // should be float16, but we're not going to worry about that for now
+                else
+                    data_type = JXL_TYPE_UINT16;
+            }
+            else if (bit_depth == 32)
+                data_type = JXL_TYPE_FLOAT;
+            else
+                return std::unexpected("unrecognized bit depth");
+            JxlPixelFormat format = { channels, data_type, JXL_NATIVE_ENDIAN, 0 };
 
             size_t buffer_size;
             JXL_ENSURE_SUCCESS(JxlDecoderImageOutBufferSize, dec.get(), &format, &buffer_size);
@@ -521,11 +544,43 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             // Nothing to do. Do not yet return. If the image is an animation, more
             // full frames may be decoded. This example only keeps the last one.
         }
+        else if (status == JXL_DEC_BOX)
+        {
+            JxlBoxType box_type;
+            JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
+            if (box_type != "Exif"sv)
+                continue;
+
+            exif_data.resize(chunk_size);
+            JxlDecoderSetBoxBuffer(dec.get(), exif_data.data(), exif_data.size());
+        }
+        else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
+        {
+            const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
+            const size_t output_pos = exif_data.size() - remaining;
+            exif_data.resize(exif_data.size() + chunk_size);
+            JXL_ENSURE_SUCCESS(
+                JxlDecoderSetBoxBuffer, dec.get(), exif_data.data() + output_pos, exif_data.size() - output_pos);
+        }
         else if (status == JXL_DEC_SUCCESS)
         {
             // All decoding successfully finished.
             // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
-            return make_tuple(std::move(pixels), width, height, channels, bit_depth, nullopt);
+
+            if (exif_data.size())
+            {
+                size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
+                exif_data.resize(exif_data.size() - remaining);
+
+                // handle the offset, which is the first 4 bytes of the exif data as big-endian integer
+                size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
+                    | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
+                exif_data_final = binary(exif_data.size() - 4 - offset);
+                std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+            }
+
+            // finally
+            return make_tuple(std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final));
         }
         else
         {
@@ -660,7 +715,10 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            return std::unexpected("Error, already provided all input");
+            auto unprocessed_bytes = JxlDecoderReleaseInput(dec.get());
+            cout << "unprocessed bytes: " << unprocessed_bytes << '\n';
+            JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
+            // return std::unexpected("Error, already provided all input");
         }
         else if (status == JXL_DEC_JPEG_RECONSTRUCTION)
         {
@@ -735,8 +793,7 @@ expected<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes
 }
 
 
-expected<decompress_result_t, string_view>
-pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
+expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
 {
     auto& document = document_resource.get();
     if (page_idx < 0 || page_idx >= document->pages())
@@ -793,8 +850,7 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
 }
 
 
-expected<decompress_result_t, string_view>
-tiff_render_page(tiff_resource_t document_resource, int page_index)
+expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t document_resource, int page_index)
 {
     auto& [document, _] = document_resource.get();
 

@@ -250,8 +250,18 @@ defmodule ImagexTest do
       {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
       assert byte_size(jxl_bytes) < byte_size(jpeg_bytes)
 
-      {:ok, {%Tensor{} = image_from_jxl, nil}} = Imagex.decode(jxl_bytes, format: :jxl)
-      {:ok, {%Tensor{} = image_from_jpeg, _}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, {%Tensor{} = image_from_jxl, %{exif: exif}}} = Imagex.decode(jxl_bytes, format: :jxl)
+      {:ok, {%Tensor{} = image_from_jpeg, %{exif: ^exif}}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+      assert exif == %{
+               ifd0: %{
+                 exif: %{pixel_y_dimension: 512, pixel_x_dimension: 512, color_space: 1},
+                 orientation: 1,
+                 resolution_unit: 2,
+                 y_resolution: {72, 1},
+                 x_resolution: {72, 1}
+               }
+             }
 
       max_diff =
         Nx.subtract(

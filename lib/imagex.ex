@@ -15,7 +15,15 @@ defmodule Imagex do
       end
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-    {:ok, {Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape), exif_data}}
+
+    type =
+      case bit_depth do
+        8 -> {:u, 8}
+        16 -> {:u, 16}
+        32 -> {:f, 32}
+      end
+
+    {:ok, {Nx.from_binary(pixels, type) |> Nx.reshape(shape), exif_data}}
   end
 
   defp to_tensor({:error, _error_msg} = output) do
