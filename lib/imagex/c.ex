@@ -34,6 +34,10 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
+  def jxl_read_exif(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
   def jxl_compress(_pixels, _width, _height, _channels, _bit_depth, _distance, _lossless, _effort) do
     exit(:nif_library_not_loaded)
   end

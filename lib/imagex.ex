@@ -6,12 +6,12 @@ defmodule Imagex do
   defguardp is_image(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
-  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}) do
+  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}, parse_metadata) do
     exif_data =
-      if is_binary(exif_binary) do
+      if is_binary(exif_binary) and parse_metadata do
         Imagex.Exif.read_exif_from_tiff(exif_binary)
       else
-        nil
+        exif_binary
       end
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
@@ -26,7 +26,7 @@ defmodule Imagex do
     {:ok, {Nx.from_binary(pixels, type) |> Nx.reshape(shape), exif_data}}
   end
 
-  defp to_tensor({:error, _error_msg} = output) do
+  defp to_tensor({:error, _error_msg} = output, _parse_metadata) do
     output
   end
 
@@ -99,21 +99,27 @@ defmodule Imagex do
   end
 
   def decode(bytes, options \\ []) do
+    parse_metadata = Keyword.get(options, :parse_metadata, true)
+
     case Keyword.get_lazy(options, :format, fn -> Imagex.Detect.detect(bytes) end) do
       :jpeg ->
-        case to_tensor(Imagex.C.jpeg_decompress(bytes)) do
+        case to_tensor(Imagex.C.jpeg_decompress(bytes), parse_metadata) do
           {:ok, {image, nil}} ->
-            {:ok, {image, Imagex.Exif.read_exif_from_jpeg(bytes)}}
+            if parse_metadata do
+              {:ok, {image, Imagex.Exif.read_exif_from_jpeg(bytes)}}
+            else
+              {:ok, {image, :not_implmented_yet}}
+            end
 
           {:error, _error_msg} = error ->
             error
         end
 
       :png ->
-        to_tensor(Imagex.C.png_decompress(bytes))
+        to_tensor(Imagex.C.png_decompress(bytes), parse_metadata)
 
       :jxl ->
-        to_tensor(Imagex.C.jxl_decompress(bytes))
+        to_tensor(Imagex.C.jxl_decompress(bytes), parse_metadata)
 
       :ppm ->
         Imagex.PPM.decode(bytes)

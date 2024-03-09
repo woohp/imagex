@@ -24,12 +24,8 @@ struct type_cast;
 
 template <typename T>
 concept type_castable = requires(T t) {
-    {
-        type_cast<T>::handle(nullptr, t)
-    } -> std::same_as<ERL_NIF_TERM>;
-    {
-        type_cast<T>::load(nullptr, static_cast<ERL_NIF_TERM>(0))
-    } -> std::convertible_to<T>;
+    { type_cast<T>::handle(nullptr, t) } -> std::same_as<ERL_NIF_TERM>;
+    { type_cast<T>::load(nullptr, static_cast<ERL_NIF_TERM>(0)) } -> std::convertible_to<T>;
 };
 
 

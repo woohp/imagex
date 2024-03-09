@@ -32,4 +32,12 @@ defmodule Imagex.Jxl do
   def transcode_to_jpeg(jxl_bytes) do
     Imagex.C.jxl_transcode_to_jpeg(jxl_bytes)
   end
+
+  def read_metadata_from_jxl(jxl_bytes) do
+    with {:ok, app1_data} <- Imagex.C.jxl_read_exif(jxl_bytes) do
+      Imagex.Exif.read_exif_from_tiff(app1_data)
+    else
+      {:error, _} = error -> error
+    end
+  end
 end

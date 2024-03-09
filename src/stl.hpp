@@ -7,8 +7,8 @@
 
 
 template <typename T>
-concept InnerType = (std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>)&&(
-    type_castable<T> || std::is_same_v<T, std::byte>);
+concept InnerType = (std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>)
+    && (type_castable<T> || std::is_same_v<T, std::byte>);
 
 
 template <InnerType T>

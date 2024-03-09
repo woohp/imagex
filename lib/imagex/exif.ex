@@ -10,6 +10,10 @@ defmodule Imagex.Exif do
     Imagex.Jfif.read_metadata_from_jpeg(bytes)
   end
 
+  def read_exif_from_jxl(bytes) when is_binary(bytes) do
+    Imagex.Jxl.read_metadata_from_jxl(bytes)
+  end
+
   def read_exif_from_tiff(app1_data) do
     # first, parse the header for the endian and offset
     <<tiff_header::binary-size(8), _rest::binary>> = app1_data

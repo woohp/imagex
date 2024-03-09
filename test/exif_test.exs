@@ -34,6 +34,24 @@ defmodule ExifTest do
            }
   end
 
+  test "exif from jpeg-xl file" do
+    jpeg_bytes = File.read!("test/assets/lena.jpg")
+    {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
+    metadata = Imagex.Exif.read_exif_from_jxl(jxl_bytes)
+
+    assert metadata == %{
+             exif: %{
+               ifd0: %{
+                 exif: %{pixel_y_dimension: 512, pixel_x_dimension: 512, color_space: 1},
+                 orientation: 1,
+                 resolution_unit: 2,
+                 y_resolution: {72, 1},
+                 x_resolution: {72, 1}
+               }
+             }
+           }
+  end
+
   test "exif with rgb thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-sony-d700.jpg")
     %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)

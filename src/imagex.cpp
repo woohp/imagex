@@ -548,7 +548,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         {
             JxlBoxType box_type;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
-            if (box_type != "Exif"sv)
+            if (string_view(box_type, std::size(box_type)) != "Exif")
                 continue;
 
             exif_data.resize(chunk_size);
@@ -587,6 +587,85 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             return std::unexpected("Unknown decoder status");
         }
     }
+}
+
+
+expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
+{
+    // Multi-threaded parallel runner.
+    static auto runner = JxlResizableParallelRunnerMake(nullptr);
+
+    auto dec = JxlDecoderMake(nullptr);
+    JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_BOX);
+    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
+    JXL_ENSURE_SUCCESS(JxlDecoderSetDecompressBoxes, dec.get(), JXL_TRUE);
+
+    JXL_ENSURE_SUCCESS(JxlDecoderSetInput, dec.get(), bytes.data, bytes.size);
+
+    const constexpr size_t chunk_size = 0xffff;
+    std::vector<uint8_t> exif_data;
+    optional<binary> exif_data_final = nullopt;
+
+    for (;;)
+    {
+        JxlDecoderStatus status = JxlDecoderProcessInput(dec.get());
+
+        if (status == JXL_DEC_ERROR)
+        {
+            return std::unexpected("Decoder error");
+        }
+        else if (status == JXL_DEC_NEED_MORE_INPUT)
+        {
+            return std::unexpected("Error, already provided all input");
+        }
+        else if (status == JXL_DEC_BASIC_INFO)
+        { }
+        else if (status == JXL_DEC_BOX)
+        {
+            if (exif_data.size())
+                break;
+
+            JxlBoxType box_type;
+            JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
+            if (string_view(box_type, std::size(box_type)) != "Exif")
+                continue;
+
+            exif_data.resize(chunk_size);
+            JxlDecoderSetBoxBuffer(dec.get(), exif_data.data(), exif_data.size());
+        }
+        else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
+        {
+            const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
+            const size_t output_pos = exif_data.size() - remaining;
+            exif_data.resize(exif_data.size() + chunk_size);
+            JXL_ENSURE_SUCCESS(
+                JxlDecoderSetBoxBuffer, dec.get(), exif_data.data() + output_pos, exif_data.size() - output_pos);
+        }
+        else if (status == JXL_DEC_SUCCESS)
+        {
+            // All decoding successfully finished.
+            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
+            break;
+        }
+        else
+        {
+            return std::unexpected("Unknown decoder status");
+        }
+    }
+
+    if (exif_data.size())
+    {
+        size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
+        exif_data.resize(exif_data.size() - remaining);
+
+        // handle the offset, which is the first 4 bytes of the exif data as big-endian integer
+        size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
+            | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
+        exif_data_final = binary(exif_data.size() - 4 - offset);
+        std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+    }
+
+    return exif_data_final;
 }
 
 
@@ -715,10 +794,7 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
-            auto unprocessed_bytes = JxlDecoderReleaseInput(dec.get());
-            cout << "unprocessed bytes: " << unprocessed_bytes << '\n';
-            JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
-            // return std::unexpected("Error, already provided all input");
+            return std::unexpected("Error, already provided all input");
         }
         else if (status == JXL_DEC_JPEG_RECONSTRUCTION)
         {
@@ -888,6 +964,7 @@ MODULE(
     def(png_decompress, DirtyFlags::DirtyCpu),
     def(png_compress, DirtyFlags::DirtyCpu),
     def(jxl_decompress, DirtyFlags::DirtyCpu),
+    def(jxl_read_exif, DirtyFlags::DirtyCpu),
     def(jxl_compress, DirtyFlags::DirtyCpu),
     def(jxl_transcode_from_jpeg, DirtyFlags::DirtyCpu),
     def(jxl_transcode_to_jpeg, DirtyFlags::DirtyCpu),

@@ -26,6 +26,15 @@ defmodule ImagexTest do
       {:ok, compressed_bytes} = Imagex.encode(test_image, :jpeg)
       assert byte_size(compressed_bytes) < Nx.size(test_image)
     end
+
+    @tag :skip
+    test "decode rgb image without parsing exif data" do
+      jpeg_bytes = File.read!("test/assets/lena.jpg")
+      {:ok, {%Tensor{} = image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg, parse_metadata: false)
+      assert image.type == {:u, 8}
+      assert image.shape == {512, 512, 3}
+      assert is_binary(metadata)
+    end
   end
 
   describe "png" do
