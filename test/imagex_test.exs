@@ -5,7 +5,7 @@ defmodule ImagexTest do
   alias Nx.Tensor
 
   setup do
-    {:ok, image} = Imagex.decode(File.read!("test/assets/lena.ppm"), format: :ppm)
+    {:ok, {image, _metadata}} = Imagex.decode(File.read!("test/assets/lena.ppm"), format: :ppm)
     {:ok, image: image}
   end
 
@@ -322,24 +322,25 @@ defmodule ImagexTest do
 
   test "decode ppm" do
     ppm_bytes = File.read!("test/assets/lena.ppm")
-    {:ok, image} = Imagex.decode(ppm_bytes, format: :ppm)
+    {:ok, {image, nil}} = Imagex.decode(ppm_bytes, format: :ppm)
     assert image.shape == {512, 512, 3}
   end
 
   test "encode ppm", %{image: test_image} do
-    assert Imagex.encode(test_image, :ppm) == File.read!("test/assets/lena.ppm")
+    assert {:ok, compressed} = Imagex.encode(test_image, :ppm)
+    assert compressed == File.read!("test/assets/lena.ppm")
   end
 
   test "decode bmp rgb pos height", %{image: test_image} do
     bmp_bytes = File.read!("test/assets/lena-rgb-pos-height.bmp")
-    {:ok, image} = Imagex.decode(bmp_bytes, format: :bmp)
+    {:ok, {image, nil}} = Imagex.decode(bmp_bytes, format: :bmp)
     assert image.shape == {512, 512, 3}
     assert Nx.to_binary(image) == Nx.to_binary(test_image)
   end
 
   test "decode bmp rgba neg height", %{image: test_image} do
     bmp_bytes = File.read!("test/assets/lena-rgba-neg-height.bmp")
-    {:ok, image} = Imagex.decode(bmp_bytes, format: :bmp)
+    {:ok, {image, nil}} = Imagex.decode(bmp_bytes, format: :bmp)
     assert image.shape == {512, 512, 4}
 
     # get the rgb portion only, which should then equal the test_image
@@ -358,7 +359,7 @@ defmodule ImagexTest do
     {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.jxl"))
     assert image.shape == {512, 512, 3}
 
-    {:ok, %Tensor{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
+    {:ok, {%Tensor{} = image, nil}} = Imagex.decode(File.read!("test/assets/lena.ppm"))
     assert image.shape == {512, 512, 3}
 
     assert Imagex.decode(<<0, 1, 2>>) == {:error, "failed to decode"}

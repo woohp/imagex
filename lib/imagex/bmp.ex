@@ -1,4 +1,5 @@
 defmodule Imagex.BMP do
+  @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
   def encode(image) when is_struct(image, Nx.Tensor) do
     {h, w, 3} = Nx.shape(image)
     total_file_size = 14 + 40 + Nx.size(image)
@@ -29,9 +30,10 @@ defmodule Imagex.BMP do
     >>
 
     ^total_file_size = byte_size(out)
-    out
+    {:ok, out}
   end
 
+  @spec decode(binary()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
   def decode(bytes) do
     with <<
            # bitmap file header
@@ -73,7 +75,8 @@ defmodule Imagex.BMP do
           Enum.join(pixels_exploded, "")
         end
 
-      {:ok, Nx.reshape(Nx.from_binary(pixels, {:u, 8}), {abs(height), width, channels})}
+      tensor = Nx.reshape(Nx.from_binary(pixels, {:u, 8}), {abs(height), width, channels})
+      {:ok, {tensor, nil}}
     else
       error -> {:error, error}
     end

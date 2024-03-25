@@ -6,6 +6,8 @@ defmodule Imagex do
   defguardp is_image(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
+  @spec to_tensor(Imagex.C.decompress_ret_type(), boolean()) ::
+          {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
   defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}, parse_metadata) do
     exif_data =
       if is_binary(exif_binary) and parse_metadata do
@@ -35,6 +37,8 @@ defmodule Imagex do
 
   defp get_bit_depth(%Nx.Tensor{type: {:u, bit_depth}}), do: bit_depth
 
+  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
+  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
   def encode(image, format, options \\ [])
 
   def encode(image, :jpeg, options) when is_image(image) do
@@ -98,6 +102,8 @@ defmodule Imagex do
     Imagex.BMP.encode(image)
   end
 
+  @spec decode(binary(), keyword()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
+  @spec decode(binary()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
   def decode(bytes, options \\ []) do
     parse_metadata = Keyword.get(options, :parse_metadata, true)
 
@@ -144,6 +150,7 @@ defmodule Imagex do
     end
   end
 
+  @spec open(String.t(), keyword()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
   def open(path, options \\ []) when is_path(path) do
     with {:ok, file_content} <- File.read(path),
          {:ok, _result} = out <- decode(file_content, options) do
@@ -153,10 +160,18 @@ defmodule Imagex do
     end
   end
 
+  @spec save(Nx.Tensor.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
+  @spec save(Nx.Tensor.t(), String.t()) :: :ok | {:error, String.t()}
   def save(image, path, options \\ []) when is_path(path) and is_image(image) do
     format = ext_to_format(String.downcase(Path.extname(path)))
-    {:ok, compressed} = encode(image, format, options)
-    File.write(path, compressed)
+
+    case encode(image, format, options) do
+      {:ok, compressed} ->
+        File.write(path, compressed)
+
+      {:error, _error_msg} = error ->
+        error
+    end
   end
 
   defp ext_to_format(".jpeg"), do: :jpeg
