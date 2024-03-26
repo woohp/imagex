@@ -13,7 +13,7 @@ Please ensure that libjpeg, libpng, libjxl, libtiff, and libpoppler are installe
 ```elixir
 defp deps do
   [
-    {:imagex, "~> 0.1.0", github: "woohp/imagex", branch: "master"}
+    {:imagex, "~> 0.2.0", github: "woohp/imagex", branch: "master"}
   ]
 end
 ```
@@ -21,16 +21,18 @@ end
 
 ## Usage
 
-To load an image file (as an Nx.Tensor)
+To load an image file (as an Imagex.Image struct)
 
 ```elixir
 {:ok, image} = Imagex.open("lena.jpg")
+image.tensor  # gets the Nx.Tensor
+image.metadata  # gets the metadata, such as Exif data, or nil if there isn't any
 ```
 
 or load from memory
 
 ```elixir
-bytes = File.read!("test/lena.jpg")
+bytes = File.read!("lena.jpg")
 {:ok, image} = Imagex.decode(bytes)
 ```
 
