@@ -1,4 +1,6 @@
 defmodule Imagex.BMP do
+  alias Imagex.Image
+
   @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
   def encode(image) when is_struct(image, Nx.Tensor) do
     {h, w, 3} = Nx.shape(image)
@@ -76,7 +78,8 @@ defmodule Imagex.BMP do
         end
 
       tensor = Nx.reshape(Nx.from_binary(pixels, {:u, 8}), {abs(height), width, channels})
-      {:ok, {tensor, nil}}
+      image = %Image{tensor: tensor}
+      {:ok, image}
     else
       error -> {:error, error}
     end

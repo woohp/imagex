@@ -2,9 +2,11 @@ defmodule ExifTest do
   use ExUnit.Case
   doctest Imagex.Exif
 
+  alias Imagex.Image
+
   test "exif from lena.jpg" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
-    {:ok, {_image, %{exif: exif} = _metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+    {:ok, %Image{metadata: %{exif: exif}}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
     assert exif == %{
              ifd0: %{
@@ -19,7 +21,7 @@ defmodule ExifTest do
 
   test "exif from png file" do
     png_bytes = File.read!("test/assets/16bit.png")
-    {:ok, {_image, %{exif: exif}}} = Imagex.decode(png_bytes, format: :png)
+    {:ok, %Image{metadata: %{exif: exif}}} = Imagex.decode(png_bytes, format: :png)
 
     assert exif == %{
              ifd0: %{
@@ -126,7 +128,7 @@ defmodule ExifTest do
     assert byte_size(thumbnail_data) == 7935
 
     # the jpeg can be decoded from the thumbnail data
-    assert {:ok, {_image, _metadata}} = Imagex.decode(thumbnail_data, format: :jpeg)
+    assert {:ok, %Image{}} = Imagex.decode(thumbnail_data, format: :jpeg)
   end
 
   test "exif with empty icc profile" do
@@ -283,7 +285,7 @@ defmodule ExifTest do
   describe "exif-org examples" do
     test "olympus-d320l.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/olympus-d320l.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       assert metadata == %{
                jfif: %{
@@ -302,7 +304,7 @@ defmodule ExifTest do
 
     test "sony-cybershot.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sony-cybershot.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -364,7 +366,7 @@ defmodule ExifTest do
 
     test "fujifilm-finepix40i.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/fujifilm-finepix40i.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -431,7 +433,7 @@ defmodule ExifTest do
 
     test "sony-d700.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sony-d700.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -486,7 +488,7 @@ defmodule ExifTest do
 
     test "kodak-dc240.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/kodak-dc240.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -546,7 +548,7 @@ defmodule ExifTest do
 
     test "olympus-c960.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/olympus-c960.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -607,7 +609,7 @@ defmodule ExifTest do
 
     test "sanyo-vpcg250.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sanyo-vpcg250.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -661,7 +663,7 @@ defmodule ExifTest do
 
     test "ricoh-rdc5300.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/ricoh-rdc5300.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -717,7 +719,7 @@ defmodule ExifTest do
 
     test "nikon-e950.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/nikon-e950.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       assert %{
                exif: %{
@@ -787,7 +789,7 @@ defmodule ExifTest do
 
     test "fujifilm-mx1700.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/fujifilm-mx1700.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -853,7 +855,7 @@ defmodule ExifTest do
 
     test "fujifilm-dx10.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/fujifilm-dx10.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -919,7 +921,7 @@ defmodule ExifTest do
 
     test "kodak-dc210.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/kodak-dc210.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -975,7 +977,7 @@ defmodule ExifTest do
 
     test "canon-ixus.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/canon-ixus.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
       assert Map.keys(metadata) == [:exif]
 
       assert %{
@@ -1039,7 +1041,7 @@ defmodule ExifTest do
 
     test "sony-powershota5.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sony-powershota5.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       assert metadata == %{
                jfif: %{
@@ -1057,7 +1059,7 @@ defmodule ExifTest do
 
     test "sanyo-vpcsx550.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sanyo-vpcsx550.jpg")
-      {:ok, {_image, metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
       assert Map.keys(metadata) == [:exif]
 

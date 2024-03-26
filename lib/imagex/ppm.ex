@@ -1,4 +1,6 @@
 defmodule Imagex.PPM do
+  alias Imagex.Image
+
   @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
   def encode(%Nx.Tensor{shape: {height, width}} = image) do
     pixels = Nx.to_binary(image)
@@ -27,7 +29,7 @@ defmodule Imagex.PPM do
         {:error, "parse error"}
       else
         tensor = Nx.reshape(Nx.from_binary(pixels, {:u, 8}), shape)
-        {:ok, {tensor, nil}}
+        {:ok, %Image{tensor: tensor}}
       end
     else
       _ -> {:error, "parse error"}

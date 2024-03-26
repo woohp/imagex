@@ -9,7 +9,8 @@ defmodule Imagex.Pdf do
       {:ok, {pixels, width, height, channels, bit_depth, _exif_data}} = Imagex.C.pdf_render_page(ref, page_idx, dpi)
 
       shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-      {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
+      tensor = Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)
+      {:ok, %Imagex.Image{tensor: tensor}}
     else
       error -> error
     end

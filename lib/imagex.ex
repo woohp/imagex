@@ -3,11 +3,14 @@ defmodule Imagex do
   Documentation for Imagex.
   """
 
-  defguardp is_image(image) when is_struct(image, Nx.Tensor)
+  alias Imagex.Image
+
+  defguardp is_image(image) when is_struct(image, Imagex.Image)
+  defguardp is_tensor(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
   @spec to_tensor(Imagex.C.decompress_ret_type(), boolean()) ::
-          {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
+          {:ok, Image.t()} | {:error, String.t()}
   defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}, parse_metadata) do
     exif_data =
       if is_binary(exif_binary) and parse_metadata do
@@ -25,7 +28,9 @@ defmodule Imagex do
         32 -> {:f, 32}
       end
 
-    {:ok, {Nx.from_binary(pixels, type) |> Nx.reshape(shape), exif_data}}
+    tensor = Nx.from_binary(pixels, type) |> Nx.reshape(shape)
+    image = %Imagex.Image{tensor: tensor, metadata: exif_data}
+    {:ok, image}
   end
 
   defp to_tensor({:error, _error_msg} = output, _parse_metadata) do
@@ -39,9 +44,11 @@ defmodule Imagex do
 
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
+  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
+  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
   def encode(image, format, options \\ [])
 
-  def encode(image, :jpeg, options) when is_image(image) do
+  def encode(image, :jpeg, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, quality: 75) do
       quality = Keyword.get(options, :quality)
       pixels = Nx.to_binary(image)
@@ -52,14 +59,14 @@ defmodule Imagex do
     end
   end
 
-  def encode(image, :png, []) when is_image(image) do
+  def encode(image, :png, []) when is_tensor(image) do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
     bit_depth = get_bit_depth(image)
     Imagex.C.png_compress(pixels, w, h, c, bit_depth)
   end
 
-  def encode(image, :jxl, options) when is_image(image) do
+  def encode(image, :jxl, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, distance: 1.0, lossless: false, effort: 7),
          bit_depth <- get_bit_depth(image) do
       # + 0.0 to convert any integer to float
@@ -94,27 +101,31 @@ defmodule Imagex do
     end
   end
 
-  def encode(image, :ppm, []) when is_image(image) do
+  def encode(image, :ppm, []) when is_tensor(image) do
     Imagex.PPM.encode(image)
   end
 
-  def encode(image, :bmp, []) when is_image(image) do
+  def encode(image, :bmp, []) when is_tensor(image) do
     Imagex.BMP.encode(image)
   end
 
-  @spec decode(binary(), keyword()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
-  @spec decode(binary()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
+  def encode(image, format, options) when is_image(image) do
+    encode(image.tensor, format, options)
+  end
+
+  @spec decode(binary(), keyword()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
+  @spec decode(binary()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
   def decode(bytes, options \\ []) do
     parse_metadata = Keyword.get(options, :parse_metadata, true)
 
     case Keyword.get_lazy(options, :format, fn -> Imagex.Detect.detect(bytes) end) do
       :jpeg ->
         case to_tensor(Imagex.C.jpeg_decompress(bytes), parse_metadata) do
-          {:ok, {image, nil}} ->
+          {:ok, %Image{tensor: tensor, metadata: nil} = image} ->
             if parse_metadata do
-              {:ok, {image, Imagex.Exif.read_exif_from_jpeg(bytes)}}
+              {:ok, %Image{tensor: tensor, metadata: Imagex.Exif.read_exif_from_jpeg(bytes)}}
             else
-              {:ok, {image, :not_implmented_yet}}
+              {:ok, image}
             end
 
           {:error, _error_msg} = error ->
@@ -150,7 +161,7 @@ defmodule Imagex do
     end
   end
 
-  @spec open(String.t(), keyword()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
+  @spec open(String.t(), keyword()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
   def open(path, options \\ []) when is_path(path) do
     with {:ok, file_content} <- File.read(path),
          {:ok, _result} = out <- decode(file_content, options) do

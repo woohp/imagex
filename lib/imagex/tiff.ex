@@ -7,6 +7,7 @@ defmodule Imagex.Tiff do
     {:ok, {pixels, width, height, channels, bit_depth, _exif_data}} = Imagex.C.tiff_render_page(ref, page_idx)
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-    {:ok, Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)}
+    tensor = Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)
+    {:ok, %Imagex.Image{tensor: tensor}}
   end
 end

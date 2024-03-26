@@ -2,3 +2,4 @@ _build
 priv
 deps
 a.out*
+.clangd
