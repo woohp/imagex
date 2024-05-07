@@ -1,3 +1,4 @@
+#include <cstring>
 #include "expp.hpp"
 #include "stl.hpp"
 #include "yielding.hpp"
@@ -29,7 +30,7 @@
 using namespace std;
 
 // pixels, width, height, channels, bit_depth, optional<exif>
-typedef tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t, optional<binary>> decompress_result_t;
+typedef tuple<binary, uint32_t, uint32_t, uint32_t, uint32_t, optional<binary>, optional<std::vector<pair<binary, binary>>>> decompress_result_t;
 
 
 void jpeg_error_exit(j_common_ptr cinfo)
@@ -88,6 +89,7 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
             cinfo.output_height,
             static_cast<uint32_t>(cinfo.num_components),
             8u,
+            nullopt,
             nullopt);
     }
     catch (erl_error<string>& e)
@@ -289,10 +291,39 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             }
         }
 
+        // read tEXt/iTxt/zTXt data
+        optional<vector<pair<binary, binary>>> text_data = nullopt;
+        {
+            png_textp text_ptr = nullptr;
+            if (int num_text = png_get_text(png_ptr, info_ptr, &text_ptr, nullptr); num_text > 0)
+            {
+                text_data = vector<pair<binary, binary>>{};
+
+                for (int i = 0; i < num_text; i++)
+                {
+                    // need to handle iTxt/zTxt later...
+                    if (text_ptr[i].compression != PNG_TEXT_COMPRESSION_NONE)
+                        continue;
+
+                    const size_t key_length = strlen(text_ptr[i].key);
+                    binary key{key_length};
+                    std::copy_n(text_ptr[i].key, key_length, key.data);
+
+                    binary text(text_ptr[i].text_length);
+                    std::copy_n(text_ptr[i].text, text_ptr[i].text_length, text.data);
+
+                    text_data->push_back({std::move(key), std::move(text)});
+                }
+
+                if (text_data->empty())
+                    text_data = nullopt;
+            }
+        }
+
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        co_yield make_tuple(std::move(output), width, height, channels, bit_depth, std::move(exif_data));
+        co_yield make_tuple(std::move(output), width, height, channels, bit_depth, std::move(exif_data), std::move(text_data));
     }
     catch (erl_error<string>& e)
     {
@@ -580,7 +611,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             }
 
             // finally
-            return make_tuple(std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final));
+            return make_tuple(std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final), nullopt);
         }
         else
         {
@@ -902,7 +933,7 @@ expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t docume
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
 
-    return make_tuple(std::move(pixels), width, height, channels, 8u, nullopt);
+    return make_tuple(std::move(pixels), width, height, channels, 8u, nullopt, nullopt);
 }
 
 typedef resource<TIFFWrapper> tiff_resource_t;
@@ -939,7 +970,7 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
     binary pixels { static_cast<size_t>(width * height * 4) };
     TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), 1, 0);
 
-    return make_tuple(std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u, nullopt);
+    return make_tuple(std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u, nullopt, nullopt);
 }
 
 

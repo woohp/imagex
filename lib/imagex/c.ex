@@ -4,7 +4,9 @@ defmodule Imagex.C do
   app = Mix.Project.config()[:app]
 
   @type decompress_ret_type ::
-          {:ok, {binary(), integer(), integer(), integer(), integer(), binary() | nil}} | {:error, String.t()}
+          {:ok,
+           {binary(), integer(), integer(), integer(), integer(), binary() | nil, list({binary(), binary()}) | nil}}
+          | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
 
   @spec init() :: :ok

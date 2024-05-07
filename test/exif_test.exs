@@ -36,6 +36,15 @@ defmodule ExifTest do
            }
   end
 
+  test "text data from png file" do
+    png_bytes = File.read!("test/assets/png_with_text_data.png")
+    {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes, format: :png)
+
+    assert metadata == %{
+             png: %{"MyNewInt" => "1234", "MyNewString" => "A string"}
+           }
+  end
+
   test "exif from jpeg-xl file" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
     {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)

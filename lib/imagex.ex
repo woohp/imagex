@@ -11,12 +11,27 @@ defmodule Imagex do
 
   @spec to_tensor(Imagex.C.decompress_ret_type(), boolean()) ::
           {:ok, Image.t()} | {:error, String.t()}
-  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary}}, parse_metadata) do
-    exif_data =
-      if is_binary(exif_binary) and parse_metadata do
-        Imagex.Exif.read_exif_from_tiff(exif_binary)
+  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts}}, parse_metadata) do
+    metadata =
+      if parse_metadata do
+        exif_data =
+          if is_binary(exif_binary) do
+            Imagex.Exif.read_exif_from_tiff(exif_binary)
+          else
+            %{}
+          end
+
+        png_data =
+          if is_list(png_texts) do
+            %{png: Map.new(png_texts)}
+          else
+            %{}
+          end
+
+        metadata = Map.merge(exif_data, png_data)
+        if metadata == %{}, do: nil, else: metadata
       else
-        exif_binary
+        nil
       end
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
@@ -29,7 +44,7 @@ defmodule Imagex do
       end
 
     tensor = Nx.from_binary(pixels, type) |> Nx.reshape(shape)
-    image = %Imagex.Image{tensor: tensor, metadata: exif_data}
+    image = %Imagex.Image{tensor: tensor, metadata: metadata}
     {:ok, image}
   end
 
