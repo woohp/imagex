@@ -152,9 +152,7 @@ jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t 
         jpeg_destroy_compress(&cinfo);
 
         // copy the buf to a binary objet
-        binary out { size_t(outsize) };
-        std::copy_n(buf, outsize, out.data);
-
+        binary out = binary::from_bytes(buf, outsize);
         free(buf);  // free the buf created by jpeg_mem_dest
 
         co_yield std::move(out);
@@ -292,8 +290,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             {
                 if (exif_length > 0)
                 {
-                    exif_data = binary(exif_length);
-                    std::copy_n(exif, exif_length, exif_data->data);
+                    exif_data = binary::from_bytes(exif, exif_length);
                     // png_free(png_ptr, exif);
                 }
             }
@@ -313,12 +310,8 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
                     if (text_ptr[i].compression != PNG_TEXT_COMPRESSION_NONE)
                         continue;
 
-                    const size_t key_length = strlen(text_ptr[i].key);
-                    binary key { key_length };
-                    std::copy_n(text_ptr[i].key, key_length, key.data);
-
-                    binary text(text_ptr[i].text_length);
-                    std::copy_n(text_ptr[i].text, text_ptr[i].text_length, text.data);
+                    binary key = binary::from_bytes(text_ptr[i].key, strlen(text_ptr[i].key));
+                    binary text = binary::from_bytes(text_ptr[i].text, text_ptr[i].text_length);
 
                     text_data->push_back({ std::move(key), std::move(text) });
                 }
@@ -617,8 +610,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
                     | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
                 if (offset < exif_data.size() - 4)
                 {
-                    exif_data_final = binary(exif_data.size() - 4 - offset);
-                    std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+                    exif_data_final = binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
                 }
             }
 
@@ -705,8 +697,7 @@ expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
         // handle the offset, which is the first 4 bytes of the exif data as big-endian integer
         size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
             | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
-        exif_data_final = binary(exif_data.size() - 4 - offset);
-        std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+        exif_data_final = binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
     }
 
     return exif_data_final;
@@ -930,8 +921,7 @@ expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t docume
 
     uint32_t height = image.height();
     uint32_t width = image.width();
-    binary pixels { height * image.bytes_per_row() };
-    copy_n(image.data(), pixels.size, pixels.data);
+    binary pixels = binary::from_bytes(image.data(), height * image.bytes_per_row());
     uint32_t channels = image.bytes_per_row() / width;
 
     const auto format = image.format();

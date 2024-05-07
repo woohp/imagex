@@ -81,6 +81,7 @@ defmodule Imagex.Exif do
       end
 
     tags_map = Enum.into(tags, %{})
+
     if next_idf_offset > 0 and next_idf_offset < byte_size(app1_data) do
       [tags_map | parse_ifds(app1_data, endian, next_idf_offset)]
     else
