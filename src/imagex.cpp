@@ -612,11 +612,14 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
                 size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
                 exif_data.resize(exif_data.size() - remaining);
 
-                // handle the offset, which is the first 4 bytes of the exif data as big-endian integer
+                // handle the offset, which is the first 4 bytes of the exif data as big-endian integer (usually 0)
                 size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
                     | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
-                exif_data_final = binary(exif_data.size() - 4 - offset);
-                std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+                if (offset < exif_data.size() - 4)
+                {
+                    exif_data_final = binary(exif_data.size() - 4 - offset);
+                    std::copy_n(exif_data.data() + 4 + offset, exif_data_final->size, exif_data_final->data);
+                }
             }
 
             // finally

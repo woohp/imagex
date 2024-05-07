@@ -80,7 +80,12 @@ defmodule Imagex.Exif do
         parse_tag(chunk, endian, app1_data)
       end
 
-    [Enum.into(tags, %{}) | parse_ifds(app1_data, endian, next_idf_offset)]
+    tags_map = Enum.into(tags, %{})
+    if next_idf_offset > 0 and next_idf_offset < byte_size(app1_data) do
+      [tags_map | parse_ifds(app1_data, endian, next_idf_offset)]
+    else
+      [tags_map]
+    end
   end
 
   def parse_tag(chunk, endian, app1_data) do

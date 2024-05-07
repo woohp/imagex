@@ -46,8 +46,7 @@ defmodule ExifTest do
   end
 
   test "exif from jpeg-xl file" do
-    jpeg_bytes = File.read!("test/assets/lena.jpg")
-    {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
+    jxl_bytes = File.read!("test/assets/lena.jxl")
     metadata = Imagex.Exif.read_exif_from_jxl(jxl_bytes)
 
     assert metadata == %{

@@ -163,7 +163,6 @@ defmodule ImagexTest do
       jxl_bytes = File.read!("test/assets/lena.jxl")
       {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
       assert image.tensor.shape == {512, 512, 3}
-      assert image.metadata == nil
     end
 
     test "decode rgba image" do
@@ -375,11 +374,9 @@ defmodule ImagexTest do
 
     {:ok, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.png"))
     assert image.tensor.shape == {512, 512, 3}
-    assert image.metadata == nil
 
     {:ok, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.jxl"))
     assert image.tensor.shape == {512, 512, 3}
-    assert image.metadata == nil
 
     {:ok, %Image{} = image} = Imagex.decode(File.read!("test/assets/lena.ppm"))
     assert image.tensor.shape == {512, 512, 3}
