@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <erl_nif.h>
+#include <type_traits>
 
 
 template <typename T>
