@@ -3,14 +3,14 @@ defmodule Imagex do
   Documentation for Imagex.
   """
 
+  @dialyzer {:nowarn_function, to_tensor: 2}
+
   alias Imagex.Image
 
   defguardp is_image(image) when is_struct(image, Imagex.Image)
   defguardp is_tensor(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
-  @spec to_tensor(Imagex.C.decompress_ret_type(), boolean()) ::
-          {:ok, Image.t()} | {:error, String.t()}
   defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts}}, parse_metadata) do
     metadata =
       if parse_metadata do
@@ -176,11 +176,13 @@ defmodule Imagex do
     end
   end
 
+  @dialyzer {:nowarn_function, open: 2}
+
   @spec open(String.t(), keyword()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
   def open(path, options \\ []) when is_path(path) do
     with {:ok, file_content} <- File.read(path),
-         {:ok, _result} = out <- decode(file_content, options) do
-      out
+         {:ok, result} <- decode(file_content, options) do
+      {:ok, result}
     else
       error -> error
     end
@@ -191,12 +193,11 @@ defmodule Imagex do
   def save(image, path, options \\ []) when is_path(path) and is_image(image) do
     format = ext_to_format(String.downcase(Path.extname(path)))
 
-    case encode(image, format, options) do
-      {:ok, compressed} ->
-        File.write(path, compressed)
-
-      {:error, _error_msg} = error ->
-        error
+    with {:ok, compressed} <- encode(image, format, options),
+         :ok <- File.write(path, compressed) do
+      :ok
+    else
+      error -> error
     end
   end
 

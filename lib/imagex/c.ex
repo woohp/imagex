@@ -1,6 +1,21 @@
 defmodule Imagex.C do
   @on_load :init
 
+  # Dialyzer suppressions for NIF stub functions that call exit()
+  @dialyzer {:nowarn_function, jpeg_decompress: 1}
+  @dialyzer {:nowarn_function, jpeg_compress: 5}
+  @dialyzer {:nowarn_function, png_decompress: 1}
+  @dialyzer {:nowarn_function, png_compress: 5}
+  @dialyzer {:nowarn_function, jxl_decompress: 1}
+  @dialyzer {:nowarn_function, jxl_read_exif: 1}
+  @dialyzer {:nowarn_function, jxl_compress: 8}
+  @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
+  @dialyzer {:nowarn_function, jxl_transcode_to_jpeg: 1}
+  @dialyzer {:nowarn_function, pdf_load_document: 1}
+  @dialyzer {:nowarn_function, pdf_render_page: 3}
+  @dialyzer {:nowarn_function, tiff_load_document: 1}
+  @dialyzer {:nowarn_function, tiff_render_page: 2}
+
   app = Mix.Project.config()[:app]
 
   @type decompress_ret_type ::
@@ -67,18 +82,22 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
+  @spec pdf_load_document(binary()) :: {:ok, {reference(), integer()}} | {:error, String.t()}
   def pdf_load_document(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
+  @spec pdf_render_page(reference(), integer(), integer()) :: decompress_ret_type()
   def pdf_render_page(_document, _page_idx, _dpi) do
     exit(:nif_library_not_loaded)
   end
 
+  @spec tiff_load_document(binary()) :: {:ok, {reference(), integer()}} | {:error, String.t()}
   def tiff_load_document(_bytes) do
     exit(:nif_library_not_loaded)
   end
 
+  @spec tiff_render_page(reference(), integer()) :: decompress_ret_type()
   def tiff_render_page(_document, _page_idx) do
     exit(:nif_library_not_loaded)
   end

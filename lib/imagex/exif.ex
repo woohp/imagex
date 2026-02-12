@@ -6,10 +6,13 @@ defmodule Imagex.Exif do
   https://www.media.mit.edu/pia/Research/deepview/exif.html
   """
 
+  @dialyzer {:nowarn_function, read_exif_from_jxl: 1}
+
   def read_exif_from_jpeg(bytes) when is_binary(bytes) do
     Imagex.Jfif.read_metadata_from_jpeg(bytes)
   end
 
+  @spec read_exif_from_jxl(binary()) :: map() | nil | {:error, String.t()}
   def read_exif_from_jxl(bytes) when is_binary(bytes) do
     Imagex.Jxl.read_metadata_from_jxl(bytes)
   end
