@@ -61,7 +61,7 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_read_exif(binary()) :: binary() | nil
+  @spec jxl_read_exif(binary()) :: {:ok, binary()} | {:error, String.t()} | nil
   def jxl_read_exif(_bytes) do
     exit(:nif_library_not_loaded)
   end
@@ -72,12 +72,12 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_transcode_from_jpeg(binary(), integer(), boolean()) :: binary()
+  @spec jxl_transcode_from_jpeg(binary(), integer(), boolean()) :: {:ok, binary()} | {:error, String.t()}
   def jxl_transcode_from_jpeg(_jpeg_bytes, _effort, _store_jpeg_metadata) do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_transcode_to_jpeg(binary()) :: binary()
+  @spec jxl_transcode_to_jpeg(binary()) :: {:ok, binary()} | {:error, String.t()}
   def jxl_transcode_to_jpeg(_jxl_bytes) do
     exit(:nif_library_not_loaded)
   end
