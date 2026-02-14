@@ -11,52 +11,6 @@ defmodule Imagex do
   defguardp is_tensor(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
-  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts}}, parse_metadata) do
-    metadata =
-      if parse_metadata do
-        exif_data =
-          if is_binary(exif_binary) do
-            Imagex.Exif.read_exif_from_tiff(exif_binary)
-          else
-            %{}
-          end
-
-        png_data =
-          if is_list(png_texts) do
-            %{png: Map.new(png_texts)}
-          else
-            %{}
-          end
-
-        metadata = Map.merge(exif_data, png_data)
-        if metadata == %{}, do: nil, else: metadata
-      else
-        nil
-      end
-
-    shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-
-    type =
-      case bit_depth do
-        8 -> {:u, 8}
-        16 -> {:u, 16}
-        32 -> {:f, 32}
-      end
-
-    tensor = Nx.from_binary(pixels, type) |> Nx.reshape(shape)
-    image = %Imagex.Image{tensor: tensor, metadata: metadata}
-    {:ok, image}
-  end
-
-  defp to_tensor({:error, _error_msg} = output, _parse_metadata) do
-    output
-  end
-
-  defp standardize_shape({h, w}), do: {h, w, 1}
-  defp standardize_shape({_h, _w, _c} = shape), do: shape
-
-  defp get_bit_depth(%Nx.Tensor{type: {:u, bit_depth}}), do: bit_depth
-
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
   @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
@@ -93,19 +47,7 @@ defmodule Imagex do
       # the config variable must be boolean, but the impl expects an integer
       lossless = Keyword.get(options, :lossless)
 
-      effort =
-        case Keyword.get(options, :effort) do
-          value when value in 1..9 -> value
-          :lightning -> 1
-          :thunder -> 2
-          :falcon -> 3
-          :cheetah -> 4
-          :hare -> 5
-          :wombat -> 6
-          :squirrel -> 7
-          :kitten -> 8
-          :tortoise -> 9
-        end
+      effort = Imagex.Jxl.parse_effort(Keyword.get(options, :effort))
 
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
@@ -200,6 +142,52 @@ defmodule Imagex do
       error -> error
     end
   end
+
+  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts}}, parse_metadata) do
+    metadata =
+      if parse_metadata do
+        exif_data =
+          if is_binary(exif_binary) do
+            Imagex.Exif.read_exif_from_tiff(exif_binary)
+          else
+            %{}
+          end
+
+        png_data =
+          if is_list(png_texts) do
+            %{png: Map.new(png_texts)}
+          else
+            %{}
+          end
+
+        metadata = Map.merge(exif_data, png_data)
+        if metadata == %{}, do: nil, else: metadata
+      else
+        nil
+      end
+
+    shape = if channels == 1, do: {height, width}, else: {height, width, channels}
+
+    type =
+      case bit_depth do
+        8 -> {:u, 8}
+        16 -> {:u, 16}
+        32 -> {:f, 32}
+      end
+
+    tensor = Nx.from_binary(pixels, type) |> Nx.reshape(shape)
+    image = %Imagex.Image{tensor: tensor, metadata: metadata}
+    {:ok, image}
+  end
+
+  defp to_tensor({:error, _error_msg} = output, _parse_metadata) do
+    output
+  end
+
+  defp standardize_shape({h, w}), do: {h, w, 1}
+  defp standardize_shape({_h, _w, _c} = shape), do: shape
+
+  defp get_bit_depth(%Nx.Tensor{type: {:u, bit_depth}}), do: bit_depth
 
   defp ext_to_format(".jpeg"), do: :jpeg
   defp ext_to_format(".jpg"), do: :jpeg

@@ -55,16 +55,16 @@ defmodule Imagex.Jxl do
 
   # Private helper functions
 
-  defp parse_effort(value) when value in 1..9, do: value
-  defp parse_effort(:lightning), do: 1
-  defp parse_effort(:thunder), do: 2
-  defp parse_effort(:falcon), do: 3
-  defp parse_effort(:cheetah), do: 4
-  defp parse_effort(:hare), do: 5
-  defp parse_effort(:wombat), do: 6
-  defp parse_effort(:squirrel), do: 7
-  defp parse_effort(:kitten), do: 8
-  defp parse_effort(:tortoise), do: 9
+  def parse_effort(value) when value in 1..9, do: value
+  def parse_effort(:lightning), do: 1
+  def parse_effort(:thunder), do: 2
+  def parse_effort(:falcon), do: 3
+  def parse_effort(:cheetah), do: 4
+  def parse_effort(:hare), do: 5
+  def parse_effort(:wombat), do: 6
+  def parse_effort(:squirrel), do: 7
+  def parse_effort(:kitten), do: 8
+  def parse_effort(:tortoise), do: 9
 
   defp parse_boolean(value) when value in [0, false], do: 0
   defp parse_boolean(value) when value in [1, true], do: 1
