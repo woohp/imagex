@@ -332,7 +332,7 @@ defmodule ImagexTest do
       # for a file that did not come from a jpeg to begin with, it should fail gracefully
       jxl_bytes = File.read!("test/assets/lena.jxl")
       {:error, reason} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
-      assert String.starts_with?(reason, "cannot be transcoded")
+      assert String.starts_with?(reason, "Cannot transcode to JPEG")
     end
   end
 

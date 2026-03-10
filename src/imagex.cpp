@@ -1,10 +1,7 @@
 #include "expp.hpp"
-#include "stl.hpp"
-#include "yielding.hpp"
 #include <bit>
 #include <cstring>
 #include <erl_nif.h>
-#include <iostream>
 #include <jpeglib.h>
 #include <jxl/decode.h>
 #include <jxl/decode_cxx.h>
@@ -28,8 +25,9 @@
 #include <vector>
 
 using namespace std;
+using namespace expp;
 
-// pixels, width, height, channels, bit_depth, optional<exif>
+// pixels, width, height, channels, bit_depth, optional<exif>, optional<text_chunks>
 typedef tuple<
     binary,
     uint32_t,
@@ -41,6 +39,62 @@ typedef tuple<
     decompress_result_t;
 
 
+// Named helper to construct decompress_result_t without positional mistakes.
+inline decompress_result_t make_decompress_result(
+    binary pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t channels,
+    uint32_t bit_depth,
+    optional<binary> exif = nullopt,
+    optional<std::vector<pair<binary, binary>>> text_chunks = nullopt)
+{
+    return make_tuple(std::move(pixels), width, height, channels, bit_depth, std::move(exif), std::move(text_chunks));
+}
+
+
+// RAII guard for jpeg_decompress_struct.
+struct jpeg_decompress_guard
+{
+    jpeg_decompress_struct* cinfo;
+    explicit jpeg_decompress_guard(jpeg_decompress_struct* c)
+        : cinfo(c)
+    { }
+    ~jpeg_decompress_guard()
+    {
+        if (cinfo)
+            jpeg_destroy_decompress(cinfo);
+    }
+    jpeg_decompress_guard(const jpeg_decompress_guard&) = delete;
+    jpeg_decompress_guard& operator=(const jpeg_decompress_guard&) = delete;
+    void release()
+    {
+        cinfo = nullptr;
+    }
+};
+
+
+// RAII guard for jpeg_compress_struct.
+struct jpeg_compress_guard
+{
+    jpeg_compress_struct* cinfo;
+    explicit jpeg_compress_guard(jpeg_compress_struct* c)
+        : cinfo(c)
+    { }
+    ~jpeg_compress_guard()
+    {
+        if (cinfo)
+            jpeg_destroy_compress(cinfo);
+    }
+    jpeg_compress_guard(const jpeg_compress_guard&) = delete;
+    jpeg_compress_guard& operator=(const jpeg_compress_guard&) = delete;
+    void release()
+    {
+        cinfo = nullptr;
+    }
+};
+
+
 void jpeg_error_exit(j_common_ptr cinfo)
 {
     char error_message[JMSG_LENGTH_MAX];
@@ -49,119 +103,106 @@ void jpeg_error_exit(j_common_ptr cinfo)
 }
 
 
-yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint8_t> jpeg_bytes) noexcept
+yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint8_t> jpeg_bytes)
 {
     struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
+    jpeg_decompress_guard guard(&cinfo);
     yielding_timer timer;
 
-    try
+    // create decompressor
+    cinfo.err = jpeg_std_error(&err);
+    jpeg_create_decompress(&cinfo);
+    cinfo.do_fancy_upsampling = FALSE;
+    err.error_exit = jpeg_error_exit;
+
+    // set source buffer
+    jpeg_mem_src(&cinfo, jpeg_bytes.data(), jpeg_bytes.size());
+
+    // read jpeg header
+    jpeg_read_header(&cinfo, TRUE);
+
+    // decompress
+    jpeg_start_decompress(&cinfo);
+
+    // Save dimensions before destroying the struct
+    const uint32_t out_width = cinfo.output_width;
+    const uint32_t out_height = cinfo.output_height;
+    const uint32_t num_components = static_cast<uint32_t>(cinfo.num_components);
+
+    unsigned output_bytes = out_width * out_height * num_components;
+    binary output(output_bytes);
+
+    // read scanlines
+    const auto row_stride = out_width * num_components;
+    while (cinfo.output_scanline < cinfo.output_height)
     {
-        // create decompressor
-        cinfo.err = jpeg_std_error(&err);
-        jpeg_create_decompress(&cinfo);
-        cinfo.do_fancy_upsampling = FALSE;
-        err.error_exit = jpeg_error_exit;
+        auto row_ptr = output.data + cinfo.output_scanline * row_stride;
+        jpeg_read_scanlines(&cinfo, &row_ptr, 1);
 
-        // set source buffer
-        jpeg_mem_src(&cinfo, jpeg_bytes.data(), jpeg_bytes.size());
-
-        // read jpeg header
-        jpeg_read_header(&cinfo, TRUE);
-
-        // decompress
-        jpeg_start_decompress(&cinfo);
-        unsigned output_bytes = cinfo.output_width * cinfo.output_height * cinfo.num_components;
-        binary output(output_bytes);
-
-        // read scanlines
-        const auto row_stride = cinfo.output_width * cinfo.num_components;
-        while (cinfo.output_scanline < cinfo.output_height)
+        if (timer.times_up())
         {
-            auto row_ptr = output.data + cinfo.output_scanline * row_stride;
-            jpeg_read_scanlines(&cinfo, &row_ptr, 1);
-
-            if (timer.times_up())
-            {
-                co_yield nullopt;
-                timer.reset();
-            }
+            co_yield nullopt;
+            timer.reset();
         }
+    }
 
-        // clean up
-        jpeg_finish_decompress(&cinfo);
-        jpeg_destroy_decompress(&cinfo);
-        co_yield make_tuple(
-            std::move(output),
-            cinfo.output_width,
-            cinfo.output_height,
-            static_cast<uint32_t>(cinfo.num_components),
-            8u,
-            nullopt,
-            nullopt);
-    }
-    catch (erl_error<string>& e)
-    {
-        jpeg_destroy_decompress(&cinfo);
-        throw e;
-    }
+    // clean up
+    jpeg_finish_decompress(&cinfo);
+    guard.release();
+    jpeg_destroy_decompress(&cinfo);
+
+    co_yield make_decompress_result(std::move(output), out_width, out_height, num_components, 8u);
 }
 
 
 yielding<expected<binary, string>>
-jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, int quality) noexcept
+jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
+    jpeg_compress_guard guard(&cinfo);
     yielding_timer timer;
 
-    try
+    // create the compressor
+    cinfo.err = jpeg_std_error(&err);
+    jpeg_create_compress(&cinfo);
+    err.error_exit = jpeg_error_exit;
+
+    uint8_t* buf = nullptr;
+    unsigned long outsize = 0;
+    jpeg_mem_dest(&cinfo, &buf, &outsize);
+
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = channels;
+    cinfo.in_color_space = JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, quality, TRUE);
+
+    // do the actual compression
+    jpeg_start_compress(&cinfo, TRUE);
+    while (cinfo.next_scanline < cinfo.image_height)
     {
-        // create the compressor
-        cinfo.err = jpeg_std_error(&err);
-        jpeg_create_compress(&cinfo);
-        err.error_exit = jpeg_error_exit;
+        auto row = pixels.data() + cinfo.next_scanline * channels * width;
+        jpeg_write_scanlines(&cinfo, &row, 1);
 
-        uint8_t* buf = nullptr;
-        unsigned long outsize = 0;
-        jpeg_mem_dest(&cinfo, &buf, &outsize);
-
-        cinfo.image_width = width;
-        cinfo.image_height = height;
-        cinfo.input_components = channels;
-        cinfo.in_color_space = JCS_RGB;
-
-        jpeg_set_defaults(&cinfo);
-        jpeg_set_quality(&cinfo, quality, TRUE);
-
-        // do the actual compression
-        jpeg_start_compress(&cinfo, TRUE);
-        while (cinfo.next_scanline < cinfo.image_height)
+        if (timer.times_up())
         {
-            auto row = pixels.data() + cinfo.next_scanline * channels * width;
-            jpeg_write_scanlines(&cinfo, &row, 1);
-
-            if (timer.times_up())
-            {
-                co_yield nullopt;
-                timer.reset();
-            }
+            co_yield nullopt;
+            timer.reset();
         }
-        jpeg_finish_compress(&cinfo);
-
-        jpeg_destroy_compress(&cinfo);
-
-        // copy the buf to a binary objet
-        binary out = binary::from_bytes(buf, outsize);
-        free(buf);  // free the buf created by jpeg_mem_dest
-
-        co_yield std::move(out);
     }
-    catch (erl_error<string>& e)
-    {
-        jpeg_destroy_compress(&cinfo);
-        throw e;
-    }
+    jpeg_finish_compress(&cinfo);
+    guard.release();
+    jpeg_destroy_compress(&cinfo);
+
+    // copy the buf to a binary object
+    binary out = binary::from_bytes(buf, outsize);
+    free(buf);  // free the buf created by jpeg_mem_dest
+
+    co_yield std::move(out);
 }
 
 
@@ -209,6 +250,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
     {
+        png_destroy_read_struct(&png_ptr, nullptr, nullptr);
         co_yield std::unexpected("couldn't initialize png info struct");
         co_return;
     }
@@ -289,10 +331,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             if (png_get_eXIf_1(png_ptr, info_ptr, &exif_length, &exif) != 0)
             {
                 if (exif_length > 0)
-                {
                     exif_data = binary::from_bytes(exif, exif_length);
-                    // png_free(png_ptr, exif);
-                }
             }
         }
 
@@ -306,7 +345,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
 
                 for (int i = 0; i < num_text; i++)
                 {
-                    // need to handle iTxt/zTxt later...
+                    // TODO: handle iTxt/zTxt compressed text chunks
                     if (text_ptr[i].compression != PNG_TEXT_COMPRESSION_NONE)
                         continue;
 
@@ -324,7 +363,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        co_yield make_tuple(
+        co_yield make_decompress_result(
             std::move(output), width, height, channels, bit_depth, std::move(exif_data), std::move(text_data));
     }
     catch (erl_error<string>& e)
@@ -341,6 +380,12 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
 {
     yielding_timer timer;
 
+    if (channels == 0 || channels > 4)
+    {
+        co_yield std::unexpected("unsupported number of channels (must be 1-4)");
+        co_return;
+    }
+
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
     {
@@ -351,7 +396,8 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
     {
-        co_yield std::unexpected("[write_png_file] png_create_info_struct failed");
+        png_destroy_write_struct(&png_ptr, nullptr);
+        co_yield std::unexpected("couldn't initialize png info struct");
         co_return;
     }
 
@@ -366,13 +412,24 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
         png_set_write_fn(png_ptr, &out_data, png_chunk_producer, nullptr);
 
         // write header
-        int color_type = PNG_COLOR_TYPE_RGB;
-        if (channels == 1)
+        int color_type;
+        switch (channels)
+        {
+        case 1:
             color_type = PNG_COLOR_TYPE_GRAY;
-        else if (channels == 2)
+            break;
+        case 2:
             color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
-        else if (channels == 4)
+            break;
+        case 3:
+            color_type = PNG_COLOR_TYPE_RGB;
+            break;
+        case 4:
             color_type = PNG_COLOR_TYPE_RGB_ALPHA;
+            break;
+        default:
+            __builtin_unreachable();  // validated above
+        }
 
         png_set_IHDR(
             png_ptr,
@@ -423,11 +480,61 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
 
 static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
 
+// NOTE: This macro uses `return`, NOT `co_return`. It is NOT safe to use inside coroutines.
 #define JXL_ENSURE_SUCCESS(func, ...)                                                                                  \
     if (func(__VA_ARGS__) != 0)                                                                                        \
     {                                                                                                                  \
         return std::unexpected(#func " failed");                                                                       \
     }
+
+
+// Parse JXL EXIF box data, handling the 4-byte big-endian offset prefix.
+// Consumes the remaining box buffer via JxlDecoderReleaseBoxBuffer.
+static optional<binary> parse_jxl_exif(std::vector<uint8_t>& exif_data, JxlDecoder* dec)
+{
+    size_t remaining = JxlDecoderReleaseBoxBuffer(dec);
+    exif_data.resize(exif_data.size() - remaining);
+
+    if (exif_data.size() < 4)
+        return nullopt;
+
+    // The first 4 bytes are a big-endian offset (usually 0)
+    size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
+        | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
+
+    if (4 + offset >= exif_data.size())
+        return nullopt;
+
+    return binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
+}
+
+
+// Collect all output from a JXL encoder into a vector.
+static expected<vector<uint8_t>, string_view> jxl_collect_compressed(JxlEncoder* enc)
+{
+    vector<uint8_t> compressed(64);
+    uint8_t* next_out = compressed.data();
+    size_t avail_out = compressed.size();
+    JxlEncoderStatus process_result;
+    while (true)
+    {
+        process_result = JxlEncoderProcessOutput(enc, &next_out, &avail_out);
+        if (process_result != JXL_ENC_NEED_MORE_OUTPUT)
+            break;
+        size_t offset = next_out - compressed.data();
+        compressed.resize(compressed.size() * 2);
+        next_out = compressed.data() + offset;
+        avail_out = compressed.size() - offset;
+    }
+    compressed.resize(next_out - compressed.data());
+    if (process_result != JXL_ENC_SUCCESS)
+    {
+        fprintf(stderr, "JxlEncoderProcessOutput failed with status: %d\n", process_result);
+        return std::unexpected("JxlEncoderProcessOutput failed");
+    }
+
+    return compressed;
+}
 
 
 JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format)
@@ -500,7 +607,9 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
 
     const constexpr size_t chunk_size = 0xffff;
     std::vector<uint8_t> exif_data;
-    optional<binary> exif_data_final = nullopt;
+
+    int need_more_input_retries = 0;
+    const int max_need_more_input_retries = 3;
 
     for (;;)
     {
@@ -512,9 +621,10 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
+            if (++need_more_input_retries > max_need_more_input_retries)
+                return std::unexpected("Decoder requested more input but all input was already provided");
             JxlDecoderReleaseInput(dec.get());
             JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
-            // return std::unexpected("Error, already provided all input");
         }
         else if (status == JXL_DEC_BASIC_INFO)
         {
@@ -532,17 +642,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_COLOR_ENCODING)
         {
-            // Get the ICC color profile of the pixel data
-            // size_t icc_size;
-            // JXL_ENSURE_SUCCESS(
-            //     JxlDecoderGetICCProfileSize, dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, &icc_size);
-            // icc_profile->resize(icc_size);
-            // if (JxlDecoderGetColorAsICCProfile(
-            //         dec.get(), &format, JXL_COLOR_PROFILE_TARGET_DATA, icc_profile->data(), icc_profile->size())
-            //     != JXL_DEC_SUCCESS)
-            // {
-            //     return std::unexpected("JxlDecoderGetColorAsICCProfile failed");
-            // }
+            // Color encoding event received; no action needed.
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
@@ -565,10 +665,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             size_t buffer_size;
             JXL_ENSURE_SUCCESS(JxlDecoderImageOutBufferSize, dec.get(), &format, &buffer_size);
             if (buffer_size != width * height * channels * bit_depth / 8)
-            {
-                // fprintf(stderr, "Invalid out buffer size %zu %zu\n", buffer_size, width * height * 16);
                 return std::unexpected("Invalid out buffer size");
-            }
             pixels = binary { buffer_size };
             JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels.size);
         }
@@ -597,26 +694,12 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_SUCCESS)
         {
-            // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
+            optional<binary> exif_data_final = nullopt;
+            if (!exif_data.empty())
+                exif_data_final = parse_jxl_exif(exif_data, dec.get());
 
-            if (exif_data.size())
-            {
-                size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-                exif_data.resize(exif_data.size() - remaining);
-
-                // handle the offset, which is the first 4 bytes of the exif data as big-endian integer (usually 0)
-                size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
-                    | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
-                if (offset < exif_data.size() - 4)
-                {
-                    exif_data_final = binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
-                }
-            }
-
-            // finally
-            return make_tuple(
-                std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final), nullopt);
+            return make_decompress_result(
+                std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final));
         }
         else
         {
@@ -640,7 +723,6 @@ expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
 
     const constexpr size_t chunk_size = 0xffff;
     std::vector<uint8_t> exif_data;
-    optional<binary> exif_data_final = nullopt;
 
     for (;;)
     {
@@ -658,7 +740,7 @@ expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
         { }
         else if (status == JXL_DEC_BOX)
         {
-            if (exif_data.size())
+            if (!exif_data.empty())
                 break;
 
             JxlBoxType box_type;
@@ -679,8 +761,6 @@ expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
         }
         else if (status == JXL_DEC_SUCCESS)
         {
-            // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
             break;
         }
         else
@@ -689,18 +769,10 @@ expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
         }
     }
 
-    if (exif_data.size())
-    {
-        size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-        exif_data.resize(exif_data.size() - remaining);
+    if (!exif_data.empty())
+        return parse_jxl_exif(exif_data, dec.get());
 
-        // handle the offset, which is the first 4 bytes of the exif data as big-endian integer
-        size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
-            | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
-        exif_data_final = binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
-    }
-
-    return exif_data_final;
+    return nullopt;
 }
 
 
@@ -742,28 +814,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     JXL_ENSURE_SUCCESS(JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, pixels.size);
     JxlEncoderCloseInput(enc.get());
 
-    vector<uint8_t> compressed(64);
-    uint8_t* next_out = compressed.data();
-    size_t avail_out = compressed.size() - (next_out - compressed.data());
-    JxlEncoderStatus process_result;
-    while (true)
-    {
-        process_result = JxlEncoderProcessOutput(enc.get(), &next_out, &avail_out);
-        if (process_result != JXL_ENC_NEED_MORE_OUTPUT)
-            break;
-        size_t offset = next_out - compressed.data();
-        compressed.resize(compressed.size() * 2);
-        next_out = compressed.data() + offset;
-        avail_out = compressed.size() - offset;
-    }
-    compressed.resize(next_out - compressed.data());
-    if (process_result != JXL_ENC_SUCCESS)
-    {
-        printf("status: %d\n", process_result);
-        return std::unexpected("JxlEncoderProcessOutput failed");
-    }
-
-    return compressed;
+    return jxl_collect_compressed(enc.get());
 }
 
 
@@ -781,28 +832,7 @@ jxl_transcode_from_jpeg(const binary& jpeg_bytes, int effort, int store_jpeg_met
     JXL_ENSURE_SUCCESS(JxlEncoderAddJPEGFrame, encoder_options, jpeg_bytes.data, jpeg_bytes.size);
     JxlEncoderCloseInput(enc.get());
 
-    vector<uint8_t> compressed(64);
-    uint8_t* next_out = compressed.data();
-    size_t avail_out = compressed.size() - (next_out - compressed.data());
-    JxlEncoderStatus process_result;
-    while (true)
-    {
-        process_result = JxlEncoderProcessOutput(enc.get(), &next_out, &avail_out);
-        if (process_result != JXL_ENC_NEED_MORE_OUTPUT)
-            break;
-        size_t offset = next_out - compressed.data();
-        compressed.resize(compressed.size() * 2);
-        next_out = compressed.data() + offset;
-        avail_out = compressed.size() - offset;
-    }
-    compressed.resize(next_out - compressed.data());
-    if (process_result != JXL_ENC_SUCCESS)
-    {
-        printf("status: %d\n", process_result);
-        return std::unexpected("JxlEncoderProcessOutput failed");
-    }
-
-    return compressed;
+    return jxl_collect_compressed(enc.get());
 }
 
 
@@ -843,7 +873,7 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
             const size_t bytes_unwritten = JxlDecoderReleaseJPEGBuffer(dec.get());
             const size_t bytes_already_written = existing_size - bytes_unwritten;
             if (bytes_already_written != 0)
-                return std::unexpected("This is awkward...");
+                return std::unexpected("JXL JPEG transcode: unexpected partial write after buffer resize");
             JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data(), jpeg_bytes.size());
         }
         else if (status == JXL_DEC_FULL_IMAGE)
@@ -855,12 +885,11 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         else if (status == JXL_DEC_SUCCESS)
         {
             // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since the decoder will be destroyed.
             return jpeg_bytes;
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
-            return std::unexpected("cannot be transcoded to jpeg, was not transcoded from jpeg begin with.");
+            return std::unexpected("Cannot transcode to JPEG: image was not originally transcoded from JPEG");
         }
         else
         {
@@ -873,12 +902,16 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
 struct TIFFWrapper
 {
     TIFF* tiff;
-    stringstream* sstream;
+    unique_ptr<stringstream> sstream;
+
+    TIFFWrapper(TIFF* tiff, unique_ptr<stringstream> sstream)
+        : tiff(tiff)
+        , sstream(std::move(sstream))
+    { }
 
     ~TIFFWrapper()
     {
         TIFFClose(this->tiff);
-        delete this->sstream;
     }
 };
 
@@ -890,17 +923,14 @@ expected<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes
 {
     // load document from bytes and check for errors
     vector<char> buf(bytes.data, bytes.data + bytes.size);
-    poppler::document* document = poppler::document::load_from_data(&buf);
+    unique_ptr<poppler::document> document(poppler::document::load_from_data(&buf));
     if (!document)
         return std::unexpected("invalid pdf file");
     if (document->is_locked())
-    {
-        delete document;
         return std::unexpected("document is locked");
-    }
 
     const auto num_pages = document->pages();
-    return make_tuple(pdf_resource_t::alloc(document), num_pages);
+    return make_tuple(pdf_resource_t::alloc(std::move(document)), num_pages);
 }
 
 
@@ -936,7 +966,7 @@ expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t docume
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
 
-    return make_tuple(std::move(pixels), width, height, channels, 8u, nullopt, nullopt);
+    return make_decompress_result(std::move(pixels), width, height, channels, 8u);
 }
 
 typedef resource<TIFFWrapper> tiff_resource_t;
@@ -944,9 +974,9 @@ typedef resource<TIFFWrapper> tiff_resource_t;
 expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary bytes)
 {
     // load document from bytes and check for errors
-    auto sstream = new stringstream;
+    auto sstream = make_unique<stringstream>();
     sstream->write(reinterpret_cast<char*>(bytes.data), bytes.size);
-    auto document = TIFFStreamOpen("file.tiff", reinterpret_cast<std::istream*>(sstream));
+    auto document = TIFFStreamOpen("file.tiff", reinterpret_cast<std::istream*>(sstream.get()));
     if (!document)
         return std::unexpected("invalid tiff file");
 
@@ -956,7 +986,7 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
         num_pages++;
     } while (TIFFReadDirectory(document));
 
-    return make_tuple(tiff_resource_t::alloc(document, sstream), num_pages);
+    return make_tuple(tiff_resource_t::alloc(document, std::move(sstream)), num_pages);
 }
 
 
@@ -964,17 +994,22 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
 {
     auto& [document, _] = document_resource.get();
 
-    TIFFSetDirectory(document, page_index);
+    if (!TIFFSetDirectory(document, page_index))
+        return std::unexpected("failed to set TIFF directory");
 
-    int width, height;
-    TIFFGetField(document, TIFFTAG_IMAGEWIDTH, &width);
-    TIFFGetField(document, TIFFTAG_IMAGELENGTH, &height);
+    int width = 0, height = 0;
+    if (!TIFFGetField(document, TIFFTAG_IMAGEWIDTH, &width))
+        return std::unexpected("failed to read TIFF image width");
+    if (!TIFFGetField(document, TIFFTAG_IMAGELENGTH, &height))
+        return std::unexpected("failed to read TIFF image height");
+    if (width <= 0 || height <= 0)
+        return std::unexpected("invalid TIFF image dimensions");
 
     binary pixels { static_cast<size_t>(width * height * 4) };
     TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), 1, 0);
 
-    return make_tuple(
-        std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u, nullopt, nullopt);
+    return make_decompress_result(
+        std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u);
 }
 
 
