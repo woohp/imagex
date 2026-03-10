@@ -8,7 +8,7 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, png_compress: 5}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
   @dialyzer {:nowarn_function, jxl_read_exif: 1}
-  @dialyzer {:nowarn_function, jxl_compress: 8}
+  @dialyzer {:nowarn_function, jxl_compress: 10}
   @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
   @dialyzer {:nowarn_function, jxl_transcode_to_jpeg: 1}
   @dialyzer {:nowarn_function, pdf_load_document: 1}
@@ -66,9 +66,31 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_compress(binary(), integer(), integer(), integer(), integer(), integer(), boolean(), integer()) ::
+  @spec jxl_compress(
+          binary(),
+          integer(),
+          integer(),
+          integer(),
+          integer(),
+          float(),
+          boolean(),
+          integer(),
+          integer(),
+          integer()
+        ) ::
           compress_ret_type()
-  def jxl_compress(_pixels, _width, _height, _channels, _bit_depth, _distance, _lossless, _effort) do
+  def jxl_compress(
+        _pixels,
+        _width,
+        _height,
+        _channels,
+        _bit_depth,
+        _distance,
+        _lossless,
+        _effort,
+        _progressive,
+        _order
+      ) do
     exit(:nif_library_not_loaded)
   end
 

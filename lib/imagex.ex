@@ -36,7 +36,14 @@ defmodule Imagex do
   end
 
   def encode(image, :jxl, options) when is_tensor(image) do
-    with {:ok, options} <- Keyword.validate(options, distance: 1.0, lossless: false, effort: 7),
+    with {:ok, options} <-
+           Keyword.validate(options,
+             distance: 1.0,
+             lossless: false,
+             effort: 7,
+             progressive: true,
+             order: :center
+           ),
          bit_depth <- get_bit_depth(image) do
       # + 0.0 to convert any integer to float
       distance =
@@ -49,10 +56,24 @@ defmodule Imagex do
 
       effort = Imagex.Jxl.parse_effort(Keyword.get(options, :effort))
 
+      progressive =
+        case Keyword.get(options, :progressive) do
+          true -> 1
+          false -> 0
+          level when is_integer(level) and level in 0..2 -> level
+        end
+
+      order =
+        case Keyword.get(options, :order) do
+          :center -> 1
+          :scanline -> 0
+          level when is_integer(level) and level in 0..1 -> level
+        end
+
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
 
-      Imagex.C.jxl_compress(pixels, w, h, c, bit_depth, distance, lossless, effort)
+      Imagex.C.jxl_compress(pixels, w, h, c, bit_depth, distance, lossless, effort, progressive, order)
     else
       error -> error
     end

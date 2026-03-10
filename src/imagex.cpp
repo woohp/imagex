@@ -341,7 +341,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             png_textp text_ptr = nullptr;
             if (int num_text = png_get_text(png_ptr, info_ptr, &text_ptr, nullptr); num_text > 0)
             {
-                text_data = vector<pair<binary, binary>> {};
+                text_data = vector<pair<binary, binary>> { };
 
                 for (int i = 0; i < num_text; i++)
                 {
@@ -784,7 +784,9 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     uint32_t bit_depth,
     double distance,
     bool lossless,
-    int effort)
+    int effort,
+    int progressive,
+    int order)
 {
     static auto runner = JxlThreadParallelRunnerMake(
         /*memory_manager=*/nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
@@ -801,7 +803,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     basic_info.uses_original_profile = lossless;
     JXL_ENSURE_SUCCESS(JxlEncoderSetBasicInfo, enc.get(), &basic_info);
 
-    JxlColorEncoding color_encoding = {};
+    JxlColorEncoding color_encoding = { };
     const bool is_grayscale = pixel_format.num_channels < 3;
     JxlColorEncodingSetToSRGB(&color_encoding, is_grayscale);
     JXL_ENSURE_SUCCESS(JxlEncoderSetColorEncoding, enc.get(), &color_encoding);
@@ -810,6 +812,18 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     JXL_ENSURE_SUCCESS(JxlEncoderSetFrameLossless, encoder_options, lossless);
     JXL_ENSURE_SUCCESS(JxlEncoderSetFrameDistance, encoder_options, distance);
     JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_EFFORT, effort);
+
+    if (progressive > 0)
+    {
+        JXL_ENSURE_SUCCESS(
+            JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_PROGRESSIVE_DC, progressive);
+        JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_PROGRESSIVE_AC, 1);
+    }
+
+    if (order > 0)
+    {
+        JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_GROUP_ORDER, order);
+    }
 
     JXL_ENSURE_SUCCESS(JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, pixels.size);
     JxlEncoderCloseInput(enc.get());

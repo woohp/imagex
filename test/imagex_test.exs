@@ -241,6 +241,25 @@ defmodule ImagexTest do
       assert List.last(compressed_sizes) < List.first(compressed_sizes)
     end
 
+    test "encode with progressive and order flags", %{image: test_image} do
+      {:ok, compressed_0} = Imagex.encode(test_image, :jxl, progressive: 0, order: :scanline)
+      {:ok, compressed_1} = Imagex.encode(test_image, :jxl, progressive: 1, order: :center)
+      {:ok, compressed_2} = Imagex.encode(test_image, :jxl, progressive: 2, order: :center)
+
+      assert byte_size(compressed_1) != byte_size(compressed_0)
+      assert byte_size(compressed_2) != byte_size(compressed_1)
+
+      # default should now be progressive: true (1) and order: :center (1)
+      {:ok, compressed_default} = Imagex.encode(test_image, :jxl)
+      assert byte_size(compressed_default) == byte_size(compressed_1)
+
+      # verify they can still be decoded
+      for bytes <- [compressed_1, compressed_2, compressed_default] do
+        {:ok, %Image{} = decoded_image} = Imagex.decode(bytes, format: :jxl)
+        assert decoded_image.tensor.shape == test_image.tensor.shape
+      end
+    end
+
     test "encode 16-bit image" do
       image = Nx.iota({8, 8, 3}, type: :u16)
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
