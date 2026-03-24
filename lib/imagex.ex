@@ -11,6 +11,23 @@ defmodule Imagex do
   defguardp is_tensor(image) when is_struct(image, Nx.Tensor)
   defguardp is_path(path) when is_binary(path) or is_list(path)
 
+  @spec convert(Image.t(), Imagex.Color.colorspace()) :: Image.t()
+  def convert(%Image{tensor: tensor} = image, to_colorspace) do
+    from_colorspace = infer_colorspace(tensor)
+    new_tensor = Imagex.Color.convert(tensor, from_colorspace, to_colorspace)
+    %{image | tensor: new_tensor}
+  end
+
+  defp infer_colorspace(tensor) do
+    case tensor.shape do
+      {_h, _w} -> :L
+      {_h, _w, 1} -> :L
+      {_h, _w, 2} -> :LA
+      {_h, _w, 3} -> :RGB
+      {_h, _w, 4} -> :RGBA
+    end
+  end
+
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
   @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
   @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
