@@ -453,10 +453,392 @@ defmodule Imagex.Exif do
     0x10022 => :deflate_subcodec
   }
 
+  @exif_tag_ids Enum.reduce(@exif_tags, %{}, fn {tag_id, tag_name}, acc ->
+                  Map.put_new(acc, tag_name, tag_id)
+                end)
+                |> Map.merge(%{
+                  latitude_ref: 0x0001,
+                  latitude: 0x0002,
+                  longitude_ref: 0x0003,
+                  longitude: 0x0004,
+                  altitude_ref: 0x0005,
+                  altitude: 0x0006,
+                  time_stamp: 0x0007,
+                  satellites: 0x0008,
+                  status: 0x0009,
+                  measure_mode: 0x000A,
+                  dop: 0x000B,
+                  speed_ref: 0x000C,
+                  speed: 0x000D,
+                  track_ref: 0x000E,
+                  track: 0x000F,
+                  img_direction_ref: 0x0010,
+                  img_direction: 0x0011,
+                  map_datum: 0x0012,
+                  dest_latitude_ref: 0x0013,
+                  dest_latitude: 0x0014,
+                  dest_longitude_ref: 0x0015,
+                  dest_longitude: 0x0016,
+                  dest_bearing_ref: 0x0017,
+                  dest_bearing: 0x0018,
+                  dest_distance_ref: 0x0019,
+                  dest_distance: 0x001A,
+                  processing_method: 0x001B,
+                  area_information: 0x001C,
+                  date_stamp: 0x001D,
+                  differential: 0x001E,
+                  h_positioning_error: 0x001F
+                })
+
+  @tiff_type_ids %{
+    unsigned_byte: 1,
+    ascii_string: 2,
+    unsigned_short: 3,
+    unsigned_long: 4,
+    unsigned_rational: 5,
+    signed_byte: 6,
+    undefined: 7,
+    signed_short: 8,
+    signed_long: 9,
+    signed_rational: 10,
+    float: 11,
+    double: 12
+  }
+
+  @ascii_tags MapSet.new([
+                :artist,
+                :body_serial_number,
+                :camera_owner_name,
+                :copyright,
+                :date_stamp,
+                :dest_bearing_ref,
+                :dest_distance_ref,
+                :dest_latitude_ref,
+                :dest_longitude_ref,
+                :date_time,
+                :date_time_digitized,
+                :date_time_original,
+                :document_name,
+                :hostcomputer,
+                :image_description,
+                :image_unique_id,
+                :interopability_index,
+                :interoperability_index,
+                :latitude_ref,
+                :lens_make,
+                :lens_model,
+                :lens_serial_number,
+                :longitude_ref,
+                :make,
+                :map_datum,
+                :measure_mode,
+                :model,
+                :offset_time,
+                :offset_time_digitized,
+                :offset_time_original,
+                :processing_method,
+                :related_image_file_format,
+                :related_sound_file,
+                :satellites,
+                :software,
+                :speed_ref,
+                :spectral_sensitivity,
+                :status,
+                :sub_sec_time,
+                :sub_sec_time_digitized,
+                :sub_sec_time_original,
+                :track_ref,
+                :user_comment,
+                :xml_packet
+              ])
+
+  @type_overrides %{
+    altitude_ref: :unsigned_byte,
+    aperture_value: :unsigned_rational,
+    area_information: :undefined,
+    bits_per_sample: :unsigned_short,
+    brightness_value: :signed_rational,
+    cfa_pattern: :undefined,
+    cfa_repeat_pattern_dim: :unsigned_short,
+    color_space: :unsigned_short,
+    components_configuration: :undefined,
+    compressed_bits_per_pixel: :unsigned_rational,
+    compression: :unsigned_short,
+    contrast: :unsigned_short,
+    date_time: :ascii_string,
+    date_time_digitized: :ascii_string,
+    date_time_original: :ascii_string,
+    device_setting_description: :undefined,
+    digital_zoom_ratio: :unsigned_rational,
+    exif_version: :undefined,
+    exposure_bias_value: :signed_rational,
+    exposure_index: :unsigned_rational,
+    exposure_mode: :unsigned_short,
+    exposure_program: :unsigned_short,
+    exposure_time: :unsigned_rational,
+    file_source: :undefined,
+    fill_order: :unsigned_short,
+    flash: :unsigned_short,
+    flash_energy: :unsigned_rational,
+    flash_pix_version: :undefined,
+    focal_length: :unsigned_rational,
+    focal_length_in_35mm_film: :unsigned_short,
+    focal_plane_resolution_unit: :unsigned_short,
+    focal_plane_x_resolution: :unsigned_rational,
+    focal_plane_y_resolution: :unsigned_rational,
+    fnumber: :unsigned_rational,
+    gain_control: :unsigned_short,
+    h_positioning_error: :unsigned_rational,
+    image_description: :ascii_string,
+    image_length: :unsigned_long,
+    image_width: :unsigned_long,
+    img_direction: :unsigned_rational,
+    img_direction_ref: :ascii_string,
+    interoperability_index: :ascii_string,
+    interoperability_version: :undefined,
+    iso_speed: :unsigned_long,
+    iso_speed_ratings: :unsigned_short,
+    jpeg_interchange_format: :unsigned_long,
+    jpeg_interchange_format_length: :unsigned_long,
+    latitude: :unsigned_rational,
+    latitude_ref: :ascii_string,
+    lens_specification: :unsigned_rational,
+    light_source: :unsigned_short,
+    longitude: :unsigned_rational,
+    longitude_ref: :ascii_string,
+    make: :ascii_string,
+    maker_note: :undefined,
+    max_aperture_value: :unsigned_rational,
+    metering_mode: :unsigned_short,
+    model: :ascii_string,
+    oecf: :undefined,
+    orientation: :unsigned_short,
+    photometric_interpretation: :unsigned_short,
+    pixel_x_dimension: :unsigned_long,
+    pixel_y_dimension: :unsigned_long,
+    planar_configuration: :unsigned_short,
+    processing_method: :undefined,
+    resolution_unit: :unsigned_short,
+    rows_per_strip: :unsigned_long,
+    samples_per_pixel: :unsigned_short,
+    saturation: :unsigned_short,
+    scene_capture_type: :unsigned_short,
+    scene_type: :undefined,
+    sensing_method: :unsigned_short,
+    sharpness: :unsigned_short,
+    shutter_speed_value: :signed_rational,
+    software: :ascii_string,
+    spatial_frequency_response: :undefined,
+    strip_byte_counts: :unsigned_long,
+    strip_offsets: :unsigned_long,
+    subject_area: :unsigned_short,
+    subject_distance: :unsigned_rational,
+    subject_distance_range: :unsigned_short,
+    subject_location: :unsigned_short,
+    sub_sec_time: :ascii_string,
+    sub_sec_time_digitized: :ascii_string,
+    sub_sec_time_original: :ascii_string,
+    thumbnail_data: :undefined,
+    time_stamp: :unsigned_rational,
+    transfer_function: :unsigned_short,
+    user_comment: :undefined,
+    version_id: :unsigned_byte,
+    white_balance: :unsigned_short,
+    white_point: :unsigned_rational,
+    x_resolution: :unsigned_rational,
+    xp_author: :unsigned_byte,
+    xp_comment: :unsigned_byte,
+    xp_keywords: :unsigned_byte,
+    xp_subject: :unsigned_byte,
+    xp_title: :unsigned_byte,
+    y_resolution: :unsigned_rational,
+    ycbcr_coefficients: :unsigned_rational,
+    ycbcr_positioning: :unsigned_short,
+    ycbcr_sub_sampling: :unsigned_short
+  }
+
+  @tag_types @type_overrides
+             |> Map.drop([:thumbnail_data, :jpeg_interchange_format, :strip_offsets, :strip_byte_counts])
+             |> Map.merge(Map.new(@ascii_tags, &{&1, :ascii_string}))
+             |> Map.merge(%{
+               altitude: :unsigned_rational,
+               body_serial_number: :ascii_string,
+               custom_rendered: :unsigned_short,
+               dest_bearing: :unsigned_rational,
+               dest_bearing_ref: :ascii_string,
+               dest_distance: :unsigned_rational,
+               dest_distance_ref: :ascii_string,
+               dest_latitude: :unsigned_rational,
+               dest_latitude_ref: :ascii_string,
+               dest_longitude: :unsigned_rational,
+               dest_longitude_ref: :ascii_string,
+               differential: :unsigned_short,
+               document_name: :ascii_string,
+               dop: :unsigned_rational,
+               measure_mode: :ascii_string,
+               new_subfile_type: :unsigned_long,
+               related_image_length: :unsigned_long,
+               related_image_width: :unsigned_long,
+               satellites: :ascii_string,
+               speed: :unsigned_rational,
+               speed_ref: :ascii_string,
+               track: :unsigned_rational,
+               track_ref: :ascii_string
+             })
+
+  @gps_tag_names MapSet.new([
+                   :version_id,
+                   :latitude_ref,
+                   :latitude,
+                   :longitude_ref,
+                   :longitude,
+                   :altitude_ref,
+                   :altitude,
+                   :time_stamp,
+                   :satellites,
+                   :status,
+                   :measure_mode,
+                   :dop,
+                   :speed_ref,
+                   :speed,
+                   :track_ref,
+                   :track,
+                   :img_direction_ref,
+                   :img_direction,
+                   :map_datum,
+                   :dest_latitude_ref,
+                   :dest_latitude,
+                   :dest_longitude_ref,
+                   :dest_longitude,
+                   :dest_bearing_ref,
+                   :dest_bearing,
+                   :dest_distance_ref,
+                   :dest_distance,
+                   :processing_method,
+                   :area_information,
+                   :date_stamp,
+                   :differential,
+                   :h_positioning_error
+                 ])
+
+  @interoperability_tag_names MapSet.new([:interoperability_index, :interoperability_version])
+
+  @exif_ifd_tag_names MapSet.new([
+                        :aperture_value,
+                        :body_serial_number,
+                        :brightness_value,
+                        :camera_owner_name,
+                        :cfa_pattern,
+                        :cfa_repeat_pattern_dim,
+                        :color_space,
+                        :components_configuration,
+                        :compressed_bits_per_pixel,
+                        :contrast,
+                        :custom_rendered,
+                        :date_time_digitized,
+                        :date_time_original,
+                        :device_setting_description,
+                        :digital_zoom_ratio,
+                        :exif_version,
+                        :exposure_bias_value,
+                        :exposure_index,
+                        :exposure_mode,
+                        :exposure_program,
+                        :exposure_time,
+                        :file_source,
+                        :flash,
+                        :flash_energy,
+                        :flash_pix_version,
+                        :fnumber,
+                        :focal_length,
+                        :focal_length_in_35mm_film,
+                        :focal_plane_resolution_unit,
+                        :focal_plane_x_resolution,
+                        :focal_plane_y_resolution,
+                        :gain_control,
+                        :image_unique_id,
+                        :iso_speed,
+                        :iso_speed_ratings,
+                        :lens_make,
+                        :lens_model,
+                        :lens_serial_number,
+                        :lens_specification,
+                        :light_source,
+                        :maker_note,
+                        :max_aperture_value,
+                        :metering_mode,
+                        :oecf,
+                        :offset_time,
+                        :offset_time_digitized,
+                        :offset_time_original,
+                        :pixel_x_dimension,
+                        :pixel_y_dimension,
+                        :related_sound_file,
+                        :saturation,
+                        :scene_capture_type,
+                        :scene_type,
+                        :sensing_method,
+                        :sharpness,
+                        :shutter_speed_value,
+                        :spatial_frequency_response,
+                        :spectral_sensitivity,
+                        :sub_sec_time,
+                        :sub_sec_time_digitized,
+                        :sub_sec_time_original,
+                        :subject_area,
+                        :subject_distance,
+                        :subject_distance_range,
+                        :subject_location,
+                        :user_comment,
+                        :white_balance
+                      ])
+
+  @tag_counts %{
+    altitude_ref: 1,
+    cfa_repeat_pattern_dim: 2,
+    components_configuration: 4,
+    exif_version: 4,
+    flash_pix_version: 4,
+    interoperability_index: 4,
+    interoperability_version: 4,
+    latitude: 3,
+    latitude_ref: 2,
+    lens_specification: 4,
+    longitude: 3,
+    longitude_ref: 2,
+    subject_location: 2,
+    time_stamp: 3,
+    version_id: 4,
+    white_point: 2,
+    x_resolution: 1,
+    y_resolution: 1,
+    ycbcr_sub_sampling: 2
+  }
+
+  @pointer_tags %{exif: :exif_ifd_pointer, gps: :gps_info_ifd_pointer, interoperability: :interoperability_ifd_pointer}
+  @child_ifds %{ifd0: [:exif, :gps], ifd1: [], exif: [:interoperability], gps: [], interoperability: []}
+  @thumbnail_related_tags MapSet.new([
+                            :thumbnail_data,
+                            :jpeg_interchange_format,
+                            :jpeg_interchange_format_length,
+                            :strip_offsets,
+                            :strip_byte_counts
+                          ])
+
   @spec read_exif_from_jpeg(binary()) :: map() | nil
   def read_exif_from_jpeg(bytes) when is_binary(bytes) do
     Imagex.Jfif.read_metadata_from_jpeg(bytes)
   end
+
+  @spec encode_exif(map()) :: {:ok, binary()} | {:error, String.t()}
+  def encode_exif(exif) when is_map(exif) do
+    with {:ok, ifds} <- extract_ifds(exif),
+         {:ok, binaries} <- encode_ifd_chain(ifds, 8) do
+      {:ok, [<<0x49, 0x49, 0x2A, 0x00, 8::32-little>> | binaries] |> IO.iodata_to_binary()}
+    end
+  end
+
+  def encode_exif(_), do: {:error, "EXIF metadata must be a map"}
 
   @dialyzer {:nowarn_function, read_exif_from_jxl: 1}
   @spec read_exif_from_jxl(binary()) :: map() | nil
@@ -516,6 +898,511 @@ defmodule Imagex.Exif do
 
     %{exif: exif}
   end
+
+  defp extract_ifds(exif) when is_map(exif) do
+    with :ok <- validate_top_level_ifds(exif),
+         {:ok, ifd0} <- normalize_ifd(Map.fetch!(exif, :ifd0), :ifd0),
+         {:ok, ifds} <- maybe_append_ifd1(exif, [ifd0]) do
+      {:ok, ifds}
+    end
+  end
+
+  defp validate_top_level_ifds(exif) do
+    cond do
+      not Map.has_key?(exif, :ifd0) ->
+        {:error, "EXIF metadata must contain ifd0"}
+
+      invalid_key = Enum.find(Map.keys(exif), &(&1 not in [:ifd0, :ifd1])) ->
+        {:error, "unsupported EXIF container #{inspect(invalid_key)}"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp maybe_append_ifd1(exif, ifds) do
+    case Map.fetch(exif, :ifd1) do
+      {:ok, ifd1} ->
+        with {:ok, ifd1} <- normalize_ifd(ifd1, :ifd1) do
+          {:ok, ifds ++ [ifd1]}
+        end
+
+      :error ->
+        {:ok, ifds}
+    end
+  end
+
+  defp normalize_ifd(ifd, location) when is_map(ifd) do
+    with :ok <- validate_child_containers(ifd, location),
+         :ok <- validate_pointer_tags(ifd),
+         {:ok, ifd} <- normalize_thumbnail_ifd(ifd, location) do
+      {:ok, ifd}
+    end
+  end
+
+  defp normalize_ifd(other, location) do
+    {:error, "expected #{inspect(location)} to be a map, got: #{inspect(other)}"}
+  end
+
+  defp validate_child_containers(ifd, location) do
+    allowed_children = Map.fetch!(@child_ifds, location)
+
+    case Enum.find([:exif, :gps, :interoperability], &(Map.has_key?(ifd, &1) and &1 not in allowed_children)) do
+      nil -> :ok
+      child_key -> {:error, "unsupported nested EXIF container #{inspect(child_key)} in #{inspect(location)}"}
+    end
+  end
+
+  defp validate_pointer_tags(ifd) do
+    pointer_tags = Map.values(@pointer_tags)
+
+    case Enum.find(pointer_tags, &Map.has_key?(ifd, &1)) do
+      nil -> :ok
+      tag -> {:error, "EXIF pointer tag #{inspect(tag)} is synthesized and cannot be set directly"}
+    end
+  end
+
+  defp normalize_thumbnail_ifd(ifd, :ifd1) do
+    thumbnail_data = Map.get(ifd, :thumbnail_data)
+
+    cond do
+      is_nil(thumbnail_data) ->
+        case find_present_key(ifd, @thumbnail_related_tags) do
+          nil -> {:ok, ifd}
+          tag -> {:error, "thumbnail tag #{inspect(tag)} requires :thumbnail_data"}
+        end
+
+      not is_binary(thumbnail_data) ->
+        {:error, ":thumbnail_data must be a binary"}
+
+      not jpeg_thumbnail?(thumbnail_data) ->
+        {:error, "only JPEG EXIF thumbnails are supported"}
+
+      (compression = Map.get(ifd, :compression)) && compression != 6 ->
+        {:error, "only JPEG EXIF thumbnails with compression 6 are supported"}
+
+      true ->
+        {:ok,
+         ifd
+         |> Map.put(:compression, 6)
+         |> Map.put(:jpeg_interchange_format_length, byte_size(thumbnail_data))
+         |> Map.delete(:jpeg_interchange_format)
+         |> Map.delete(:strip_offsets)
+         |> Map.delete(:strip_byte_counts)}
+    end
+  end
+
+  defp normalize_thumbnail_ifd(ifd, location) do
+    case find_present_key(ifd, @thumbnail_related_tags) do
+      nil -> {:ok, ifd}
+      tag -> {:error, "thumbnail tag #{inspect(tag)} is only supported in ifd1, got #{inspect(location)}"}
+    end
+  end
+
+  defp jpeg_thumbnail?(<<0xFF, 0xD8, _::binary>>), do: true
+  defp jpeg_thumbnail?(_), do: false
+
+  defp find_present_key(ifd, keys) do
+    Enum.find(keys, &Map.has_key?(ifd, &1))
+  end
+
+  defp encode_ifd_chain([], _offset), do: {:ok, []}
+
+  defp encode_ifd_chain([ifd], offset) do
+    with {:ok, node} <- build_ifd_node(ifd, :ifd0),
+         {:ok, {node, _end_offset}} <- layout_ifd(node, offset, 0),
+         do: {:ok, [render_ifd(node)]}
+  end
+
+  defp encode_ifd_chain([ifd0, ifd1], offset) do
+    with {:ok, node} <- build_ifd_node(ifd0, :ifd0),
+         {:ok, {node, next_offset}} <- layout_ifd(node, offset, 0),
+         {:ok, binaries} <- encode_ifd_chain([ifd1], next_offset, :ifd1) do
+      node = %{node | next_ifd_offset: next_offset}
+      {:ok, [render_ifd(node) | binaries]}
+    end
+  end
+
+  defp encode_ifd_chain(_ifds, _offset) do
+    {:error, "only ifd0 and optional ifd1 are supported for EXIF encoding"}
+  end
+
+  defp encode_ifd_chain([ifd], offset, location) do
+    with {:ok, node} <- build_ifd_node(ifd, location),
+         {:ok, {node, _end_offset}} <- layout_ifd(node, offset, 0) do
+      {:ok, [render_ifd(node)]}
+    end
+  end
+
+  defp build_ifd_node(ifd, location) do
+    thumbnail_data = Map.get(ifd, :thumbnail_data)
+    child_keys = Map.fetch!(@child_ifds, location)
+
+    entries =
+      ifd
+      |> Map.drop(child_keys ++ [:thumbnail_data])
+      |> Enum.map(&build_value_entry(&1, location))
+
+    entries =
+      if is_binary(thumbnail_data) do
+        [build_data_pointer_entry(:jpeg_interchange_format, thumbnail_data) | entries]
+      else
+        entries
+      end
+
+    with {:ok, entries} <- collect_results(entries),
+         {:ok, entries} <- add_pointer_entries(entries, ifd, location) do
+      {:ok, %{entries: Enum.sort_by(entries, & &1.tag_id), next_ifd_offset: 0}}
+    end
+  end
+
+  defp add_pointer_entries(entries, ifd, location) do
+    Map.fetch!(@child_ifds, location)
+    |> Enum.reduce_while({:ok, entries}, fn child_key, {:ok, acc} ->
+      case Map.get(ifd, child_key) do
+        nil ->
+          {:cont, {:ok, acc}}
+
+        child_ifd when is_map(child_ifd) ->
+          pointer_tag = Map.fetch!(@pointer_tags, child_key)
+
+          with {:ok, child_ifd} <- normalize_ifd(child_ifd, child_key),
+               {:ok, child_node} <- build_ifd_node(child_ifd, child_key) do
+            {:cont,
+             {:ok,
+              [
+                %{
+                  tag_id: Map.fetch!(@exif_tag_ids, pointer_tag),
+                  kind: :child,
+                  child: child_node,
+                  type: :unsigned_long,
+                  type_id: Map.fetch!(@tiff_type_ids, :unsigned_long),
+                  count: 1
+                }
+                | acc
+              ]}}
+          else
+            error ->
+              {:halt, error}
+          end
+
+        other ->
+          {:halt, {:error, "expected #{inspect(child_key)} to be a map, got: #{inspect(other)}"}}
+      end
+    end)
+  end
+
+  defp build_value_entry({tag_name, value}, location) do
+    with {:ok, schema} <- fetch_tag_schema(tag_name, location),
+         {:ok, {count, data}} <- encode_schema_value(schema, value) do
+      {:ok,
+       %{
+         tag_id: schema.id,
+         kind: :value,
+         type: schema.type,
+         type_id: Map.fetch!(@tiff_type_ids, schema.type),
+         count: count,
+         data: data
+       }}
+    else
+      {:error, reason} -> {:error, "unsupported EXIF value for #{inspect(tag_name)}: #{reason}"}
+    end
+  end
+
+  defp build_data_pointer_entry(tag_name, data) do
+    %{
+      tag_id: Map.fetch!(@exif_tag_ids, tag_name),
+      kind: :data_pointer,
+      type: :unsigned_long,
+      type_id: Map.fetch!(@tiff_type_ids, :unsigned_long),
+      count: 1,
+      data: data
+    }
+  end
+
+  defp collect_results(results) do
+    Enum.reduce_while(results, {:ok, []}, fn
+      %{tag_id: _} = entry, {:ok, acc} -> {:cont, {:ok, [entry | acc]}}
+      {:ok, entry}, {:ok, acc} -> {:cont, {:ok, [entry | acc]}}
+      {:error, _} = error, _acc -> {:halt, error}
+    end)
+  end
+
+  defp fetch_tag_schema(tag_name, location) do
+    with {:ok, tag_id} <- fetch_tag_id(tag_name),
+         {:ok, type} <- fetch_tag_type(tag_name),
+         :ok <- validate_tag_location(tag_name, location) do
+      {:ok,
+       %{
+         id: tag_id,
+         name: tag_name,
+         type: type,
+         count: Map.get(@tag_counts, tag_name, :any)
+       }}
+    end
+  end
+
+  defp fetch_tag_id(tag_name) do
+    case Map.fetch(@exif_tag_ids, tag_name) do
+      {:ok, tag_id} -> {:ok, tag_id}
+      :error -> {:error, "unsupported EXIF tag #{inspect(tag_name)}"}
+    end
+  end
+
+  defp fetch_tag_type(tag_name) do
+    case Map.fetch(@tag_types, tag_name) do
+      {:ok, type} -> {:ok, type}
+      :error -> {:error, "unsupported EXIF tag #{inspect(tag_name)}"}
+    end
+  end
+
+  defp validate_tag_location(tag_name, location) do
+    if location in tag_locations(tag_name) do
+      :ok
+    else
+      {:error, "EXIF tag #{inspect(tag_name)} is not valid in #{inspect(location)}"}
+    end
+  end
+
+  defp tag_locations(tag_name) do
+    cond do
+      MapSet.member?(@gps_tag_names, tag_name) -> [:gps]
+      MapSet.member?(@interoperability_tag_names, tag_name) -> [:interoperability]
+      MapSet.member?(@exif_ifd_tag_names, tag_name) -> [:exif]
+      true -> [:ifd0, :ifd1]
+    end
+  end
+
+  defp encode_schema_value(schema, value) do
+    with {:ok, {count, data}} <- encode_tiff_value(schema.type, value),
+         :ok <- validate_count(schema.name, schema.count, count) do
+      {:ok, {count, data}}
+    end
+  end
+
+  defp validate_count(_tag_name, :any, _count), do: :ok
+
+  defp validate_count(tag_name, expected, actual) when is_integer(expected) do
+    if actual == expected do
+      :ok
+    else
+      {:error, "EXIF tag #{inspect(tag_name)} expects #{expected} value(s), got #{actual}"}
+    end
+  end
+
+  defp validate_count(tag_name, {:one_of, expected_counts}, actual) do
+    if actual in expected_counts do
+      :ok
+    else
+      {:error, "EXIF tag #{inspect(tag_name)} expects #{inspect(expected_counts)} value counts, got #{actual}"}
+    end
+  end
+
+  defp encode_tiff_value(:ascii_string, value) when is_binary(value), do: {:ok, {byte_size(value) + 1, value <> <<0>>}}
+  defp encode_tiff_value(:ascii_string, value), do: {:error, "cannot encode #{inspect(value)} as :ascii_string"}
+
+  defp encode_tiff_value(type, value) when type in [:undefined, :unsigned_byte] do
+    encode_byte_sequence(value, false, type)
+  end
+
+  defp encode_tiff_value(:signed_byte, value) do
+    encode_byte_sequence(value, true, :signed_byte)
+  end
+
+  defp encode_tiff_value(type, value) when type in [:unsigned_short, :signed_short] do
+    encode_integer_sequence(value, 16, type == :signed_short, type)
+  end
+
+  defp encode_tiff_value(type, value) when type in [:unsigned_long, :signed_long] do
+    encode_integer_sequence(value, 32, type == :signed_long, type)
+  end
+
+  defp encode_tiff_value(type, value) when type in [:unsigned_rational, :signed_rational] do
+    encode_rational_sequence(value, type == :signed_rational, type)
+  end
+
+  defp encode_tiff_value(:float, value) do
+    encode_float_sequence(value, 32, :float)
+  end
+
+  defp encode_tiff_value(:double, value) do
+    encode_float_sequence(value, 64, :double)
+  end
+
+  defp encode_tiff_value(type, value), do: {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
+
+  defp encode_byte_sequence(value, _signed, _type) when is_binary(value), do: {:ok, {byte_size(value), value}}
+
+  defp encode_byte_sequence(value, signed, type) do
+    values = List.wrap(value)
+
+    with {:ok, data} <- encode_many(values, &encode_integer(&1, 8, signed)) do
+      {:ok, {length(values), data}}
+    else
+      {:error, _} = error -> error
+      _ -> {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
+    end
+  end
+
+  defp encode_integer_sequence(value, bits, signed, type) do
+    values = List.wrap(value)
+
+    with {:ok, data} <- encode_many(values, &encode_integer(&1, bits, signed)) do
+      {:ok, {length(values), data}}
+    else
+      {:error, _} = error -> error
+      _ -> {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
+    end
+  end
+
+  defp encode_rational_sequence(value, signed, type) do
+    values = List.wrap(value)
+
+    with {:ok, data} <-
+           encode_many(values, fn
+             {numerator, denominator} ->
+               with {:ok, numerator} <- encode_integer(numerator, 32, signed),
+                    {:ok, denominator} <- encode_integer(denominator, 32, signed) do
+                 {:ok, [numerator, denominator]}
+               end
+
+             other ->
+               {:error, "cannot encode #{inspect(other)} as #{inspect(type)}"}
+           end) do
+      {:ok, {length(values), data}}
+    end
+  end
+
+  defp encode_float_sequence(value, bits, type) do
+    values = List.wrap(value)
+
+    with {:ok, data} <-
+           encode_many(values, fn
+             item when is_float(item) ->
+               {:ok, if(bits == 32, do: <<item::float-32-little>>, else: <<item::float-64-little>>)}
+
+             other ->
+               {:error, "cannot encode #{inspect(other)} as #{inspect(type)}"}
+           end) do
+      {:ok, {length(values), data}}
+    end
+  end
+
+  defp encode_many(values, encoder) do
+    values
+    |> Enum.reduce_while([], fn value, acc ->
+      case encoder.(value) do
+        {:ok, encoded} -> {:cont, [encoded | acc]}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:error, _} = error -> error
+      encoded -> {:ok, encoded |> Enum.reverse() |> IO.iodata_to_binary()}
+    end
+  end
+
+  defp encode_integer(value, bits, signed) when is_integer(value) do
+    try do
+      {:ok,
+       if signed do
+         <<value::integer-signed-size(bits)-little>>
+       else
+         <<value::integer-unsigned-size(bits)-little>>
+       end}
+    rescue
+      ArgumentError ->
+        {:error, "integer #{inspect(value)} is out of range for #{bits}-bit #{signedness(signed)} integer"}
+    end
+  end
+
+  defp encode_integer(value, _bits, _signed) do
+    {:error, "expected integer EXIF value, got: #{inspect(value)}"}
+  end
+
+  defp signedness(true), do: "signed"
+  defp signedness(false), do: "unsigned"
+
+  defp layout_ifd(node, offset, next_ifd_offset) do
+    entries = node.entries
+    data_offset = offset + 2 + length(entries) * 12 + 4
+
+    {entries, data_offset} =
+      Enum.map_reduce(entries, data_offset, fn entry, current_offset ->
+        case entry do
+          %{kind: :child} ->
+            {Map.put(entry, :value_offset, nil), current_offset}
+
+          %{kind: :value, data: data} when byte_size(data) <= 4 ->
+            {Map.put(entry, :value_offset, nil), current_offset}
+
+          %{data: data} ->
+            {Map.put(entry, :value_offset, current_offset), align_even(current_offset + byte_size(data))}
+        end
+      end)
+
+    {entries, end_offset} =
+      Enum.map_reduce(entries, data_offset, fn
+        %{kind: :child, child: child} = entry, current_offset ->
+          {:ok, {child, child_end_offset}} = layout_ifd(child, current_offset, 0)
+          {Map.put(entry, :child, child) |> Map.put(:value_offset, current_offset), child_end_offset}
+
+        entry, current_offset ->
+          {entry, current_offset}
+      end)
+
+    {:ok,
+     {node |> Map.put(:entries, entries) |> Map.put(:offset, offset) |> Map.put(:next_ifd_offset, next_ifd_offset),
+      end_offset}}
+  end
+
+  defp render_ifd(node) do
+    entries_bin = Enum.map(node.entries, &render_entry/1)
+    data_bin = Enum.map(node.entries, &render_entry_payload/1)
+
+    children_bin =
+      Enum.flat_map(node.entries, fn
+        %{kind: :child, child: child} -> [render_ifd(child)]
+        _ -> []
+      end)
+
+    IO.iodata_to_binary([
+      <<length(node.entries)::16-little>>,
+      entries_bin,
+      <<node.next_ifd_offset::32-little>>,
+      data_bin,
+      children_bin
+    ])
+  end
+
+  defp render_entry(entry) do
+    value_field =
+      case entry.kind do
+        :child -> <<entry.value_offset::32-little>>
+        _ when is_nil(entry.value_offset) -> pad_to_four(entry.data)
+        _ -> <<entry.value_offset::32-little>>
+      end
+
+    <<entry.tag_id::16-little, entry.type_id::16-little, entry.count::32-little, value_field::binary-size(4)>>
+  end
+
+  defp render_entry_payload(%{kind: :child}), do: []
+  defp render_entry_payload(%{value_offset: nil}), do: []
+  defp render_entry_payload(%{data: data}), do: pad_to_even(data)
+
+  defp align_even(value) when rem(value, 2) == 0, do: value
+  defp align_even(value), do: value + 1
+
+  defp pad_to_even(data) do
+    if rem(byte_size(data), 2) == 0, do: data, else: [data, <<0>>]
+  end
+
+  defp pad_to_four(data) when byte_size(data) == 4, do: data
+
+  defp pad_to_four(data) when byte_size(data) < 4,
+    do: IO.iodata_to_binary([data, :binary.copy(<<0>>, 4 - byte_size(data))])
+
+  defp pad_to_four(_data), do: raise(ArgumentError, "inline TIFF field cannot exceed four bytes")
 
   def parse_ifds(_app1_data, _endian, 0) do
     []

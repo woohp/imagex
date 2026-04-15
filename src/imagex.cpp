@@ -156,8 +156,13 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
 }
 
 
-yielding<expected<binary, string>>
-jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, int quality)
+yielding<expected<binary, string>> jpeg_compress(
+    vector<uint8_t> pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t channels,
+    int quality,
+    optional<binary> exif_binary)
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
@@ -183,6 +188,24 @@ jpeg_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t 
 
     // do the actual compression
     jpeg_start_compress(&cinfo, TRUE);
+
+    if (exif_binary.has_value())
+    {
+        const auto& exif = exif_binary.value();
+        vector<uint8_t> app1_payload;
+        app1_payload.reserve(6 + exif.size);
+        app1_payload.insert(app1_payload.end(), { 'E', 'x', 'i', 'f', 0, 0 });
+        app1_payload.insert(app1_payload.end(), exif.data, exif.data + exif.size);
+
+        if (app1_payload.size() > 65533)
+        {
+            co_yield std::unexpected("EXIF metadata is too large for a JPEG APP1 segment");
+            co_return;
+        }
+
+        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, app1_payload.data(), static_cast<unsigned int>(app1_payload.size()));
+    }
+
     while (cinfo.next_scanline < cinfo.image_height)
     {
         auto row = pixels.data() + cinfo.next_scanline * channels * width;

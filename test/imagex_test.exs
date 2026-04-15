@@ -27,6 +27,42 @@ defmodule ImagexTest do
       assert byte_size(compressed_bytes) < Nx.size(test_image.tensor)
     end
 
+    test "encode image preserves exif metadata from Image struct", %{image: test_image} do
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(File.read!("test/assets/lena.jpg"), format: :jpeg)
+      image = %Image{tensor: test_image.tensor, metadata: metadata}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jpeg)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jpeg)
+
+      assert encoded_metadata.exif == metadata.exif
+    end
+
+    test "encode image preserves thumbnail-bearing exif metadata" do
+      jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
+      {:ok, %Image{} = source_image} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+      {:ok, compressed_bytes} = Imagex.encode(source_image, :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :jpeg)
+
+      assert metadata.exif.ifd1.thumbnail_data == source_image.metadata.exif.ifd1.thumbnail_data
+
+      assert metadata.exif.ifd1.jpeg_interchange_format_length ==
+               byte_size(source_image.metadata.exif.ifd1.thumbnail_data)
+    end
+
+    test "encode image returns error for unsupported exif values", %{image: test_image} do
+      image = %Image{tensor: test_image.tensor, metadata: %{exif: %{ifd0: %{orientation: %{bad: true}}}}}
+
+      assert {:error, reason} = Imagex.encode(image, :jpeg)
+      assert String.contains?(reason, "unsupported EXIF")
+    end
+
+    test "encode image returns error for malformed exif metadata", %{image: test_image} do
+      image = %Image{tensor: test_image.tensor, metadata: %{exif: :bad_metadata}}
+
+      assert {:error, "EXIF metadata must be a map, got: :bad_metadata"} = Imagex.encode(image, :jpeg)
+    end
+
     @tag :skip
     test "decode rgb image without parsing exif data" do
       jpeg_bytes = File.read!("test/assets/lena.jpg")

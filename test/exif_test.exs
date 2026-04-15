@@ -62,6 +62,54 @@ defmodule ExifTest do
            }
   end
 
+  test "encode_exif roundtrips parsed exif" do
+    jpeg_bytes = File.read!("test/assets/lena.jpg")
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+
+    assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
+    assert Imagex.Exif.read_exif_from_tiff(exif_binary) == %{exif: exif}
+  end
+
+  test "encode_exif roundtrips parsed exif with thumbnail data" do
+    jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
+    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+
+    assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
+
+    assert %{exif: reparsed_exif} = Imagex.Exif.read_exif_from_tiff(exif_binary)
+
+    {_offset, reparsed_exif} = pop_in(reparsed_exif, [:ifd1, :jpeg_interchange_format])
+    {_offset, exif} = pop_in(exif, [:ifd1, :jpeg_interchange_format])
+    assert reparsed_exif == exif
+  end
+
+  test "encode_exif keeps GPS ASCII ref tags as ASCII" do
+    exif = %{
+      ifd0: %{
+        gps: %{
+          version_id: [2, 3, 0, 0],
+          latitude_ref: "N",
+          latitude: [{43, 1}, {28, 1}, {281_400_000, 100_000_000}],
+          longitude_ref: "E",
+          longitude: [{11, 1}, {53, 1}, {645_599_999, 100_000_000}]
+        }
+      }
+    }
+
+    assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
+    assert Imagex.Exif.read_exif_from_tiff(exif_binary) == %{exif: exif}
+  end
+
+  test "encode_exif requires ifd0" do
+    assert {:error, "EXIF metadata must contain ifd0"} = Imagex.Exif.encode_exif(%{ifd1: %{orientation: 1}})
+  end
+
+  test "encode_exif rejects raw thumbnail payloads" do
+    exif = %{ifd0: %{}, ifd1: %{thumbnail_data: <<0, 1, 2>>, compression: 1}}
+
+    assert {:error, "only JPEG EXIF thumbnails are supported"} = Imagex.Exif.encode_exif(exif)
+  end
+
   test "exif with rgb thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-sony-d700.jpg")
     %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)

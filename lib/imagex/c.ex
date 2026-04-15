@@ -3,7 +3,7 @@ defmodule Imagex.C do
 
   # Dialyzer suppressions for NIF stub functions that call exit()
   @dialyzer {:nowarn_function, jpeg_decompress: 1}
-  @dialyzer {:nowarn_function, jpeg_compress: 5}
+  @dialyzer {:nowarn_function, jpeg_compress: 6}
   @dialyzer {:nowarn_function, png_decompress: 1}
   @dialyzer {:nowarn_function, png_compress: 5}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
@@ -41,8 +41,8 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jpeg_compress(binary(), integer(), integer(), integer(), integer()) :: compress_ret_type()
-  def jpeg_compress(_pixels, _width, _height, _channels, _quality) do
+  @spec jpeg_compress(binary(), integer(), integer(), integer(), integer(), binary() | nil) :: compress_ret_type()
+  def jpeg_compress(_pixels, _width, _height, _channels, _quality, _exif_binary) do
     exit(:nif_library_not_loaded)
   end
 
