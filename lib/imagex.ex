@@ -61,7 +61,18 @@ defmodule Imagex do
     pixels = Nx.to_binary(image)
     {h, w, c} = standardize_shape(image.shape)
     bit_depth = get_bit_depth(image)
-    Imagex.C.png_compress(pixels, w, h, c, bit_depth)
+    Imagex.C.png_compress(pixels, w, h, c, bit_depth, nil)
+  end
+
+  def encode(%Image{tensor: tensor, metadata: metadata}, :png, []) do
+    with {:ok, png_texts} <- Imagex.Png.texts_from_metadata(metadata) do
+      pixels = Nx.to_binary(tensor)
+      {h, w, c} = standardize_shape(tensor.shape)
+      bit_depth = get_bit_depth(tensor)
+      Imagex.C.png_compress(pixels, w, h, c, bit_depth, png_texts)
+    else
+      error -> error
+    end
   end
 
   def encode(image, :jxl, options) when is_tensor(image) do
@@ -203,12 +214,7 @@ defmodule Imagex do
             %{}
           end
 
-        png_data =
-          if is_list(png_texts) do
-            %{png: Map.new(png_texts)}
-          else
-            %{}
-          end
+        png_data = Imagex.Png.metadata_from_texts(png_texts)
 
         metadata = Map.merge(exif_data, png_data)
         if metadata == %{}, do: nil, else: metadata

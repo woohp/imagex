@@ -398,8 +398,13 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
 }
 
 
-yielding<expected<vector<png_byte>, string_view>>
-png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t channels, uint32_t bit_depth)
+yielding<expected<vector<png_byte>, string_view>> png_compress(
+    vector<uint8_t> pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t channels,
+    uint32_t bit_depth,
+    optional<vector<pair<binary, binary>>> text_chunks)
 {
     yielding_timer timer;
 
@@ -464,6 +469,34 @@ png_compress(vector<uint8_t> pixels, uint32_t width, uint32_t height, uint32_t c
             PNG_INTERLACE_NONE,
             PNG_COMPRESSION_TYPE_BASE,
             PNG_FILTER_TYPE_BASE);
+
+        if (text_chunks.has_value())
+        {
+            vector<string> text_keys;
+            vector<string> text_values;
+            vector<png_text> png_text_entries;
+
+            text_keys.reserve(text_chunks->size());
+            text_values.reserve(text_chunks->size());
+            png_text_entries.reserve(text_chunks->size());
+
+            for (const auto& [key, value] : *text_chunks)
+            {
+                text_keys.emplace_back(reinterpret_cast<const char*>(key.data), key.size);
+                text_values.emplace_back(reinterpret_cast<const char*>(value.data), value.size);
+
+                png_text entry = { };
+                entry.compression = PNG_TEXT_COMPRESSION_NONE;
+                entry.key = text_keys.back().data();
+                entry.text = text_values.back().data();
+                entry.text_length = text_values.back().size();
+                png_text_entries.push_back(entry);
+            }
+
+            if (!png_text_entries.empty())
+                png_set_text(png_ptr, info_ptr, png_text_entries.data(), png_text_entries.size());
+        }
+
         png_write_info(png_ptr, info_ptr);
 
         if constexpr (std::endian::native == std::endian::little)

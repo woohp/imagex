@@ -145,6 +145,46 @@ defmodule ImagexTest do
       assert image.metadata == nil
     end
 
+    test "encode image preserves png text metadata", %{image: test_image} do
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{png_chunks: [%{keyword: "Author", text: "Imagex"}, %{keyword: "Comment", text: "Hello"}]}
+      }
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :png)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
+
+      assert metadata == %{
+               png_chunks: [%{keyword: "Author", text: "Imagex"}, %{keyword: "Comment", text: "Hello"}]
+             }
+    end
+
+    test "encode image preserves png text order and duplicate keywords", %{image: test_image} do
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{png_chunks: [%{keyword: "Tag", text: "first"}, %{keyword: "Tag", text: "second"}]}
+      }
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :png)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
+
+      assert metadata == %{
+               png_chunks: [%{keyword: "Tag", text: "first"}, %{keyword: "Tag", text: "second"}]
+             }
+    end
+
+    test "encode image returns error for malformed png metadata", %{image: test_image} do
+      image = %Image{tensor: test_image.tensor, metadata: %{png_chunks: :bad_metadata}}
+
+      assert {:error, "PNG metadata must be a list, got: :bad_metadata"} = Imagex.encode(image, :png)
+    end
+
+    test "encode image returns error for malformed png text entry", %{image: test_image} do
+      image = %Image{tensor: test_image.tensor, metadata: %{png_chunks: [%{keyword: "Tag", text: 123}]}}
+
+      assert {:error, "PNG text values must be binaries, got: 123"} = Imagex.encode(image, :png)
+    end
+
     test "encode rgba image" do
       image1 = Nx.iota({10, 10, 4}, type: :u8)
       {:ok, compressed_bytes} = Imagex.encode(image1, :png)

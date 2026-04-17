@@ -5,7 +5,7 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, jpeg_decompress: 1}
   @dialyzer {:nowarn_function, jpeg_compress: 6}
   @dialyzer {:nowarn_function, png_decompress: 1}
-  @dialyzer {:nowarn_function, png_compress: 5}
+  @dialyzer {:nowarn_function, png_compress: 6}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
   @dialyzer {:nowarn_function, jxl_read_exif: 1}
   @dialyzer {:nowarn_function, jxl_compress: 10}
@@ -51,8 +51,9 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec png_compress(binary(), integer(), integer(), integer(), integer()) :: compress_ret_type()
-  def png_compress(_pixels, _width, _height, _channels, _bit_depth) do
+  @spec png_compress(binary(), integer(), integer(), integer(), integer(), list({binary(), binary()}) | nil) ::
+          compress_ret_type()
+  def png_compress(_pixels, _width, _height, _channels, _bit_depth, _png_texts) do
     exit(:nif_library_not_loaded)
   end
 

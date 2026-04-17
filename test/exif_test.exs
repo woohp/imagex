@@ -41,7 +41,10 @@ defmodule ExifTest do
     {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes, format: :png)
 
     assert metadata == %{
-             png: %{"MyNewInt" => "1234", "MyNewString" => "A string"}
+             png_chunks: [
+               %{keyword: "MyNewString", text: "A string"},
+               %{keyword: "MyNewInt", text: "1234"}
+             ]
            }
   end
 
