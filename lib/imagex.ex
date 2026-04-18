@@ -35,44 +35,35 @@ defmodule Imagex do
   def encode(image, format, options \\ [])
 
   def encode(image, :jpeg, options) when is_tensor(image) do
-    with {:ok, options} <- Keyword.validate(options, quality: 75) do
+    with {:ok, options} <- Keyword.validate(options, quality: 75, metadata: nil),
+         {:ok, exif_binary} <- exif_binary_from_metadata(Keyword.get(options, :metadata)) do
       quality = Keyword.get(options, :quality)
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
-      Imagex.C.jpeg_compress(pixels, w, h, c, quality, nil)
-    else
-      error -> error
-    end
-  end
-
-  def encode(%Image{tensor: tensor, metadata: metadata}, :jpeg, options) do
-    with {:ok, options} <- Keyword.validate(options, quality: 75),
-         {:ok, exif_binary} <- exif_binary_from_metadata(metadata) do
-      quality = Keyword.get(options, :quality)
-      pixels = Nx.to_binary(tensor)
-      {h, w, c} = standardize_shape(tensor.shape)
       Imagex.C.jpeg_compress(pixels, w, h, c, quality, exif_binary)
     else
       error -> error
     end
   end
 
-  def encode(image, :png, []) when is_tensor(image) do
-    pixels = Nx.to_binary(image)
-    {h, w, c} = standardize_shape(image.shape)
-    bit_depth = get_bit_depth(image)
-    Imagex.C.png_compress(pixels, w, h, c, bit_depth, nil)
+  def encode(%Image{tensor: tensor, metadata: metadata}, :jpeg, options) do
+    encode(tensor, :jpeg, Keyword.put(options, :metadata, metadata))
   end
 
-  def encode(%Image{tensor: tensor, metadata: metadata}, :png, []) do
-    with {:ok, png_texts} <- Imagex.Png.texts_from_metadata(metadata) do
-      pixels = Nx.to_binary(tensor)
-      {h, w, c} = standardize_shape(tensor.shape)
-      bit_depth = get_bit_depth(tensor)
+  def encode(image, :png, options) when is_tensor(image) do
+    with {:ok, options} <- Keyword.validate(options, metadata: nil),
+         {:ok, png_texts} <- Imagex.Png.texts_from_metadata(Keyword.get(options, :metadata)) do
+      pixels = Nx.to_binary(image)
+      {h, w, c} = standardize_shape(image.shape)
+      bit_depth = get_bit_depth(image)
       Imagex.C.png_compress(pixels, w, h, c, bit_depth, png_texts)
     else
       error -> error
     end
+  end
+
+  def encode(%Image{tensor: tensor, metadata: metadata}, :png, options) do
+    encode(tensor, :png, Keyword.put(options, :metadata, metadata))
   end
 
   def encode(image, :jxl, options) when is_tensor(image) do
