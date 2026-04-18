@@ -55,24 +55,24 @@ public:
 
     constexpr std::suspend_always initial_suspend() const noexcept
     {
-        return {};
+        return { };
     }
     constexpr std::suspend_always final_suspend() const noexcept
     {
-        return {};
+        return { };
     }
 
     template <typename U = T, std::enable_if_t<!std::is_rvalue_reference<U>::value, int> = 0>
     std::suspend_always yield_value(std::remove_reference_t<T>& value) noexcept
     {
         m_value = std::addressof(value);
-        return {};
+        return { };
     }
 
     std::suspend_always yield_value(std::remove_reference_t<T>&& value) noexcept
     {
         m_value = std::addressof(value);
-        return {};
+        return { };
     }
 
     void unhandled_exception()
@@ -230,7 +230,7 @@ public:
 
     detail::generator_sentinel end() noexcept
     {
-        return detail::generator_sentinel {};
+        return detail::generator_sentinel { };
     }
 
     void swap(generator& other) noexcept
@@ -819,12 +819,12 @@ public:
             throw std::invalid_argument("invalid tuple");
         if (arity != static_cast<int>(sizeof...(Args)))
             throw std::invalid_argument("invalid tuple arity");
-        return from_term_impl(env, tup_array, std::index_sequence_for<Args...> {});
+        return from_term_impl(env, tup_array, std::index_sequence_for<Args...> { });
     }
 
     static ERL_NIF_TERM to_term(ErlNifEnv* env, const tuple_type& items) noexcept
     {
-        return to_term_impl(env, items, std::index_sequence_for<Args...> {});
+        return to_term_impl(env, items, std::index_sequence_for<Args...> { });
     }
 };
 
@@ -1310,7 +1310,7 @@ struct function_traits<R (*)(Args...) noexcept(IsNoexcept)>
     template <func_type fn>
     constexpr static R apply(ErlNifEnv* env, const ERL_NIF_TERM argv[])
     {
-        return apply_impl<fn>(env, argv, std::make_index_sequence<nargs> {});
+        return apply_impl<fn>(env, argv, std::make_index_sequence<nargs> { });
     }
 
     constexpr static bool any_args_by_reference()

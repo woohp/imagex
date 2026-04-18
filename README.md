@@ -56,6 +56,125 @@ or save to memory
 compressed = Imagex.encode(image, :jpeg)
 ```
 
+## Metadata
+
+`Imagex.decode/2` returns `%Imagex.Image{metadata: ...}` when metadata is present.
+
+Supported metadata today:
+
+- JPEG: EXIF read/write
+- PNG: EXIF read, text chunk read/write
+- JXL: EXIF read/write, XML and JUMBF box read/write
+
+### Reading metadata
+
+Metadata is parsed by default during `decode/2` and `open/2`.
+
+```elixir
+{:ok, image} = Imagex.open("lena.jpg")
+
+image.metadata
+#=> %{exif: %{ifd0: %{orientation: 1, ...}}}
+```
+
+You can skip metadata parsing with `parse_metadata: false`.
+
+```elixir
+{:ok, image} = Imagex.decode(File.read!("lena.jxl"), format: :jxl, parse_metadata: false)
+image.metadata
+#=> nil
+```
+
+### Writing metadata
+
+Metadata is written from `%Imagex.Image{metadata: ...}`.
+
+```elixir
+image = %Imagex.Image{
+  tensor: Nx.broadcast(Nx.tensor([0, 0, 0], type: {:u, 8}), {16, 16, 3}),
+  metadata: %{
+    exif: %{
+      ifd0: %{
+        orientation: 1,
+        x_resolution: {72, 1},
+        y_resolution: {72, 1},
+        resolution_unit: 2,
+        exif: %{
+          pixel_x_dimension: 16,
+          pixel_y_dimension: 16,
+          color_space: 1
+        }
+      }
+    }
+  }
+}
+
+{:ok, jpeg_bytes} = Imagex.encode(image, :jpeg)
+{:ok, jxl_bytes} = Imagex.encode(image, :jxl, lossless: true)
+```
+
+You can also pass metadata directly when encoding a tensor:
+
+```elixir
+tensor = Nx.broadcast(Nx.tensor([0, 0, 0], type: {:u, 8}), {16, 16, 3})
+
+{:ok, png_bytes} =
+  Imagex.encode(tensor, :png,
+    metadata: %{
+      png_chunks: [
+        %{keyword: "Author", text: "Imagex"},
+        %{keyword: "Comment", text: "Hello from Imagex"}
+      ]
+    }
+  )
+```
+
+### Metadata shapes
+
+EXIF uses the common `metadata.exif` shape across formats:
+
+```elixir
+%{
+  exif: %{
+    ifd0: %{
+      orientation: 1,
+      x_resolution: {72, 1},
+      y_resolution: {72, 1},
+      resolution_unit: 2
+    }
+  }
+}
+```
+
+PNG text metadata uses `metadata.png_chunks`:
+
+```elixir
+%{
+  png_chunks: [
+    %{keyword: "Author", text: "Imagex"},
+    %{keyword: "Comment", text: "Hello from Imagex"}
+  ]
+}
+```
+
+JXL container metadata uses `metadata.jxl_boxes` with atom box types:
+
+```elixir
+%{
+  jxl_boxes: [
+    %{type: :xml, contents: "<x:xmpmeta>...</x:xmpmeta>"},
+    %{type: :jumb, contents: <<1, 2, 3>>}
+  ]
+}
+```
+
+Notes:
+
+- `metadata.exif` is used for JPEG and JXL writing.
+- `metadata.png_chunks` currently writes PNG text metadata as `tEXt` chunks.
+- `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
+- Unsupported or malformed metadata returns `{:error, reason}` during encode.
+
 To work with pdf files
 
 ```elixir
