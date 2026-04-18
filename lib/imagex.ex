@@ -73,9 +73,11 @@ defmodule Imagex do
              lossless: false,
              effort: 7,
              progressive: true,
-             order: :center
+             order: :center,
+             metadata: nil
            ),
-         bit_depth <- get_bit_depth(image) do
+         bit_depth <- get_bit_depth(image),
+         {:ok, {exif_binary, jxl_boxes}} <- Imagex.Jxl.metadata_to_boxes(Keyword.get(options, :metadata)) do
       # + 0.0 to convert any integer to float
       distance =
         case Keyword.get(options, :distance) do
@@ -104,7 +106,20 @@ defmodule Imagex do
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
 
-      Imagex.C.jxl_compress(pixels, w, h, c, bit_depth, distance, lossless, effort, progressive, order)
+      Imagex.C.jxl_compress(
+        pixels,
+        w,
+        h,
+        c,
+        bit_depth,
+        exif_binary,
+        jxl_boxes,
+        distance,
+        lossless,
+        effort,
+        progressive,
+        order
+      )
     else
       error -> error
     end
@@ -116,6 +131,10 @@ defmodule Imagex do
 
   def encode(image, :bmp, []) when is_tensor(image) do
     Imagex.BMP.encode(image)
+  end
+
+  def encode(%Image{tensor: tensor, metadata: metadata}, :jxl, options) do
+    encode(tensor, :jxl, Keyword.put(options, :metadata, metadata))
   end
 
   def encode(image, format, options) when is_image(image) do
@@ -195,7 +214,10 @@ defmodule Imagex do
     end
   end
 
-  defp to_tensor({:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts}}, parse_metadata) do
+  defp to_tensor(
+         {:ok, {pixels, width, height, channels, bit_depth, exif_binary, png_texts, xml_boxes, jumb_boxes}},
+         parse_metadata
+       ) do
     metadata =
       if parse_metadata do
         exif_data =
@@ -206,8 +228,9 @@ defmodule Imagex do
           end
 
         png_data = Imagex.Png.metadata_from_texts(png_texts)
+        jxl_data = Imagex.Jxl.boxes_to_metadata({nil, xml_boxes, jumb_boxes}) || %{}
 
-        metadata = Map.merge(exif_data, png_data)
+        metadata = exif_data |> Map.merge(png_data) |> Map.merge(jxl_data)
         if metadata == %{}, do: nil, else: metadata
       else
         nil

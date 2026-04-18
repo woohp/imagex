@@ -844,7 +844,8 @@ defmodule Imagex.Exif do
   @spec read_exif_from_jxl(binary()) :: map() | nil
   def read_exif_from_jxl(bytes) when is_binary(bytes) do
     case Imagex.Jxl.read_metadata_from_jxl(bytes) do
-      {:ok, metadata} -> metadata
+      {:ok, nil} -> nil
+      {:ok, metadata} -> if Map.has_key?(metadata, :exif), do: %{exif: metadata.exif}, else: nil
       {:error, _} -> nil
     end
   end

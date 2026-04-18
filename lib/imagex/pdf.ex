@@ -7,7 +7,7 @@ defmodule Imagex.Pdf do
     with {:ok, options} <- Keyword.validate(options, dpi: 72) do
       dpi = Keyword.get(options, :dpi)
 
-      {:ok, {pixels, width, height, channels, bit_depth, _exif_data, _png_texts}} =
+      {:ok, {pixels, width, height, channels, bit_depth, _exif_data, _png_texts, _xml_boxes, _jumb_boxes}} =
         Imagex.C.pdf_render_page(ref, page_idx, dpi)
 
       shape = if channels == 1, do: {height, width}, else: {height, width, channels}

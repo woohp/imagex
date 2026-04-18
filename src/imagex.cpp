@@ -1,4 +1,5 @@
 #include "expp.hpp"
+#include <array>
 #include <bit>
 #include <cstring>
 #include <erl_nif.h>
@@ -27,29 +28,42 @@
 using namespace std;
 using namespace expp;
 
-// pixels, width, height, channels, bit_depth, optional<exif>, optional<text_chunks>
-typedef tuple<
-    binary,
-    uint32_t,
-    uint32_t,
-    uint32_t,
-    uint32_t,
-    optional<binary>,
-    optional<std::vector<pair<binary, binary>>>>
-    decompress_result_t;
+using text_chunks_t = std::vector<pair<binary, binary>>;
 
-
-// Named helper to construct decompress_result_t without positional mistakes.
-inline decompress_result_t make_decompress_result(
-    binary pixels,
-    uint32_t width,
-    uint32_t height,
-    uint32_t channels,
-    uint32_t bit_depth,
-    optional<binary> exif = nullopt,
-    optional<std::vector<pair<binary, binary>>> text_chunks = nullopt)
+struct decompress_result_t
 {
-    return make_tuple(std::move(pixels), width, height, channels, bit_depth, std::move(exif), std::move(text_chunks));
+    binary pixels;
+    uint32_t width;
+    uint32_t height;
+    uint32_t channels;
+    uint32_t bit_depth;
+    optional<binary> exif;
+    text_chunks_t text_chunks;
+    std::vector<binary> xml_boxes;
+    std::vector<binary> jumb_boxes;
+};
+
+
+namespace expp
+{
+template <>
+struct type_cast<decompress_result_t>
+{
+    static ERL_NIF_TERM to_term(ErlNifEnv* env, const decompress_result_t& result) noexcept
+    {
+        return enif_make_tuple9(
+            env,
+            type_cast<binary>::to_term(env, result.pixels),
+            type_cast<uint32_t>::to_term(env, result.width),
+            type_cast<uint32_t>::to_term(env, result.height),
+            type_cast<uint32_t>::to_term(env, result.channels),
+            type_cast<uint32_t>::to_term(env, result.bit_depth),
+            type_cast<optional<binary>>::to_term(env, result.exif),
+            type_cast<text_chunks_t>::to_term(env, result.text_chunks),
+            type_cast<std::vector<binary>>::to_term(env, result.xml_boxes),
+            type_cast<std::vector<binary>>::to_term(env, result.jumb_boxes));
+    }
+};
 }
 
 
@@ -152,7 +166,13 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
     guard.release();
     jpeg_destroy_decompress(&cinfo);
 
-    co_yield make_decompress_result(std::move(output), out_width, out_height, num_components, 8u);
+    co_yield decompress_result_t {
+        .pixels = std::move(output),
+        .width = out_width,
+        .height = out_height,
+        .channels = num_components,
+        .bit_depth = 8u,
+    };
 }
 
 
@@ -359,13 +379,11 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         }
 
         // read tEXt/iTxt/zTXt data
-        optional<vector<pair<binary, binary>>> text_data = nullopt;
+        text_chunks_t text_data;
         {
             png_textp text_ptr = nullptr;
             if (int num_text = png_get_text(png_ptr, info_ptr, &text_ptr, nullptr); num_text > 0)
             {
-                text_data = vector<pair<binary, binary>> { };
-
                 for (int i = 0; i < num_text; i++)
                 {
                     // TODO: handle iTxt/zTxt compressed text chunks
@@ -375,19 +393,23 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
                     binary key = binary::from_bytes(text_ptr[i].key, strlen(text_ptr[i].key));
                     binary text = binary::from_bytes(text_ptr[i].text, text_ptr[i].text_length);
 
-                    text_data->push_back({ std::move(key), std::move(text) });
+                    text_data.push_back({ std::move(key), std::move(text) });
                 }
-
-                if (text_data->empty())
-                    text_data = nullopt;
             }
         }
 
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         png_ptr = nullptr;
 
-        co_yield make_decompress_result(
-            std::move(output), width, height, channels, bit_depth, std::move(exif_data), std::move(text_data));
+        co_yield decompress_result_t {
+            .pixels = std::move(output),
+            .width = width,
+            .height = height,
+            .channels = channels,
+            .bit_depth = bit_depth,
+            .exif = std::move(exif_data),
+            .text_chunks = std::move(text_data),
+        };
     }
     catch (erl_error<string>& e)
     {
@@ -544,24 +566,93 @@ static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
     }
 
 
-// Parse JXL EXIF box data, handling the 4-byte big-endian offset prefix.
-// Consumes the remaining box buffer via JxlDecoderReleaseBoxBuffer.
-static optional<binary> parse_jxl_exif(std::vector<uint8_t>& exif_data, JxlDecoder* dec)
+enum class jxl_box_kind
+{
+    none,
+    exif,
+    xml,
+    jumb,
+};
+
+
+static optional<binary> finalize_jxl_box_data(std::vector<uint8_t>& box_data, JxlDecoder* dec)
 {
     size_t remaining = JxlDecoderReleaseBoxBuffer(dec);
-    exif_data.resize(exif_data.size() - remaining);
+    if (remaining > box_data.size())
+        return nullopt;
 
-    if (exif_data.size() < 4)
+    box_data.resize(box_data.size() - remaining);
+    return binary::from_bytes(box_data.data(), box_data.size());
+}
+
+
+// Parse JXL EXIF box data, handling the 4-byte big-endian offset prefix.
+static optional<binary> parse_jxl_exif(const binary& exif_data)
+{
+    if (exif_data.size < 4)
         return nullopt;
 
     // The first 4 bytes are a big-endian offset (usually 0)
-    size_t offset = static_cast<size_t>(exif_data[0]) << 24 | static_cast<size_t>(exif_data[1]) << 16
-        | static_cast<size_t>(exif_data[2]) << 8 | static_cast<size_t>(exif_data[3]);
+    size_t offset = static_cast<size_t>(exif_data.data[0]) << 24 | static_cast<size_t>(exif_data.data[1]) << 16
+        | static_cast<size_t>(exif_data.data[2]) << 8 | static_cast<size_t>(exif_data.data[3]);
 
-    if (4 + offset >= exif_data.size())
+    if (4 + offset >= exif_data.size)
         return nullopt;
 
-    return binary::from_bytes(exif_data.data() + 4 + offset, exif_data.size() - 4 - offset);
+    return binary::from_bytes(exif_data.data + 4 + offset, exif_data.size - 4 - offset);
+}
+
+
+static optional<jxl_box_kind> jxl_box_kind_from_type(const JxlBoxType box_type)
+{
+    const string_view type(box_type, 4);
+    if (type == "Exif")
+        return jxl_box_kind::exif;
+    if (type == "xml ")
+        return jxl_box_kind::xml;
+    if (type == "jumb")
+        return jxl_box_kind::jumb;
+
+    return nullopt;
+}
+
+
+static expected<void, string_view> append_jxl_box(decompress_result_t& result, jxl_box_kind box_kind, binary box_data)
+{
+    switch (box_kind)
+    {
+    case jxl_box_kind::none:
+        return { };
+
+    case jxl_box_kind::exif: {
+        optional<binary> exif = parse_jxl_exif(box_data);
+        if (!exif.has_value())
+            return std::unexpected("invalid JXL metadata box");
+        result.exif = std::move(exif.value());
+        return { };
+    }
+
+    case jxl_box_kind::xml:
+        result.xml_boxes.push_back(std::move(box_data));
+        return { };
+
+    case jxl_box_kind::jumb:
+        result.jumb_boxes.push_back(std::move(box_data));
+        return { };
+    }
+
+    return { };
+}
+
+
+static optional<array<char, 4>> jxl_box_type_from_atom(const atom& box_type_atom)
+{
+    if (box_type_atom == "xml"sv)
+        return array<char, 4> { 'x', 'm', 'l', ' ' };
+    if (box_type_atom == "jumb"sv)
+        return array<char, 4> { 'j', 'u', 'm', 'b' };
+
+    return nullopt;
 }
 
 
@@ -654,18 +745,31 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
 
     JXL_ENSURE_SUCCESS(JxlDecoderSetInput, dec.get(), jxl_bytes.data, jxl_bytes.size);
 
-    binary pixels;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t channels = 0;
-    uint32_t bit_depth = 0;
+    decompress_result_t result { };
     uint32_t exponent_bits_per_sample = 0;
-
     const constexpr size_t chunk_size = 0xffff;
-    std::vector<uint8_t> exif_data;
+    jxl_box_kind current_box_kind = jxl_box_kind::none;
+    std::vector<uint8_t> current_box_data;
 
     int need_more_input_retries = 0;
     const int max_need_more_input_retries = 3;
+
+    auto finish_current_box = [&]() -> expected<void, string_view> {
+        if (current_box_kind == jxl_box_kind::none)
+            return { };
+
+        optional<binary> box_data = finalize_jxl_box_data(current_box_data, dec.get());
+        if (!box_data.has_value())
+            return std::unexpected("invalid JXL metadata box");
+
+        if (auto append_result = append_jxl_box(result, current_box_kind, std::move(box_data.value()));
+            !append_result.has_value())
+            return std::unexpected(append_result.error());
+
+        current_box_kind = jxl_box_kind::none;
+        current_box_data.clear();
+        return { };
+    };
 
     for (;;)
     {
@@ -690,10 +794,10 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             if (info.exponent_bits_per_sample != 0)
                 return std::unexpected("FLOAT32 images are currently not yet supported");
 
-            width = info.xsize;
-            height = info.ysize;
-            channels = info.num_color_channels + info.num_extra_channels;
-            bit_depth = info.bits_per_sample;
+            result.width = info.xsize;
+            result.height = info.ysize;
+            result.channels = info.num_color_channels + info.num_extra_channels;
+            result.bit_depth = info.bits_per_sample;
             exponent_bits_per_sample = info.exponent_bits_per_sample;
         }
         else if (status == JXL_DEC_COLOR_ENCODING)
@@ -703,132 +807,70 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
             JxlDataType data_type;
-            if (bit_depth == 8)
+            if (result.bit_depth == 8)
                 data_type = JXL_TYPE_UINT8;
-            else if (bit_depth == 16)
+            else if (result.bit_depth == 16)
             {
                 if (exponent_bits_per_sample > 0)
                     data_type = JXL_TYPE_FLOAT;  // should be float16, but we're not going to worry about that for now
                 else
                     data_type = JXL_TYPE_UINT16;
             }
-            else if (bit_depth == 32)
+            else if (result.bit_depth == 32)
                 data_type = JXL_TYPE_FLOAT;
             else
                 return std::unexpected("unrecognized bit depth");
-            JxlPixelFormat format = { channels, data_type, JXL_NATIVE_ENDIAN, 0 };
+            JxlPixelFormat format = { result.channels, data_type, JXL_NATIVE_ENDIAN, 0 };
 
             size_t buffer_size;
             JXL_ENSURE_SUCCESS(JxlDecoderImageOutBufferSize, dec.get(), &format, &buffer_size);
-            if (buffer_size != width * height * channels * bit_depth / 8)
+            if (buffer_size != result.width * result.height * result.channels * result.bit_depth / 8)
                 return std::unexpected("Invalid out buffer size");
-            pixels = binary { buffer_size };
-            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, pixels.data, pixels.size);
+            result.pixels = binary { buffer_size };
+            JXL_ENSURE_SUCCESS(JxlDecoderSetImageOutBuffer, dec.get(), &format, result.pixels.data, result.pixels.size);
+        }
+        else if (status == JXL_DEC_BOX)
+        {
+            if (auto box_result = finish_current_box(); !box_result.has_value())
+                return std::unexpected(box_result.error());
+
+            JxlBoxType box_type;
+            JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
+            optional<jxl_box_kind> next_box_kind = jxl_box_kind_from_type(box_type);
+            if (!next_box_kind.has_value())
+                continue;
+
+            current_box_kind = next_box_kind.value();
+            current_box_data.resize(chunk_size);
+            JxlDecoderSetBoxBuffer(dec.get(), current_box_data.data(), current_box_data.size());
+        }
+        else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
+        {
+            const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
+            const size_t output_pos = current_box_data.size() - remaining;
+            current_box_data.resize(current_box_data.size() + chunk_size);
+            JXL_ENSURE_SUCCESS(
+                JxlDecoderSetBoxBuffer,
+                dec.get(),
+                current_box_data.data() + output_pos,
+                current_box_data.size() - output_pos);
         }
         else if (status == JXL_DEC_FULL_IMAGE)
         {
             // Nothing to do. Do not yet return. If the image is an animation, more
             // full frames may be decoded. This example only keeps the last one.
         }
-        else if (status == JXL_DEC_BOX)
-        {
-            JxlBoxType box_type;
-            JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
-            if (string_view(box_type, std::size(box_type)) != "Exif")
-                continue;
-
-            exif_data.resize(chunk_size);
-            JxlDecoderSetBoxBuffer(dec.get(), exif_data.data(), exif_data.size());
-        }
-        else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
-        {
-            const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-            const size_t output_pos = exif_data.size() - remaining;
-            exif_data.resize(exif_data.size() + chunk_size);
-            JXL_ENSURE_SUCCESS(
-                JxlDecoderSetBoxBuffer, dec.get(), exif_data.data() + output_pos, exif_data.size() - output_pos);
-        }
         else if (status == JXL_DEC_SUCCESS)
         {
-            optional<binary> exif_data_final = nullopt;
-            if (!exif_data.empty())
-                exif_data_final = parse_jxl_exif(exif_data, dec.get());
-
-            return make_decompress_result(
-                std::move(pixels), width, height, channels, bit_depth, std::move(exif_data_final));
+            if (auto box_result = finish_current_box(); !box_result.has_value())
+                return std::unexpected(box_result.error());
+            return result;
         }
         else
         {
             return std::unexpected("Unknown decoder status");
         }
     }
-}
-
-
-expected<optional<binary>, string_view> jxl_read_exif(const binary& bytes)
-{
-    // Multi-threaded parallel runner.
-    static auto runner = JxlResizableParallelRunnerMake(nullptr);
-
-    auto dec = JxlDecoderMake(nullptr);
-    JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_BOX);
-    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
-    JXL_ENSURE_SUCCESS(JxlDecoderSetDecompressBoxes, dec.get(), JXL_TRUE);
-
-    JXL_ENSURE_SUCCESS(JxlDecoderSetInput, dec.get(), bytes.data, bytes.size);
-
-    const constexpr size_t chunk_size = 0xffff;
-    std::vector<uint8_t> exif_data;
-
-    for (;;)
-    {
-        JxlDecoderStatus status = JxlDecoderProcessInput(dec.get());
-
-        if (status == JXL_DEC_ERROR)
-        {
-            return std::unexpected("Decoder error");
-        }
-        else if (status == JXL_DEC_NEED_MORE_INPUT)
-        {
-            return std::unexpected("Error, already provided all input");
-        }
-        else if (status == JXL_DEC_BASIC_INFO)
-        { }
-        else if (status == JXL_DEC_BOX)
-        {
-            if (!exif_data.empty())
-                break;
-
-            JxlBoxType box_type;
-            JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), box_type, JXL_TRUE);
-            if (string_view(box_type, std::size(box_type)) != "Exif")
-                continue;
-
-            exif_data.resize(chunk_size);
-            JxlDecoderSetBoxBuffer(dec.get(), exif_data.data(), exif_data.size());
-        }
-        else if (status == JXL_DEC_BOX_NEED_MORE_OUTPUT)
-        {
-            const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
-            const size_t output_pos = exif_data.size() - remaining;
-            exif_data.resize(exif_data.size() + chunk_size);
-            JXL_ENSURE_SUCCESS(
-                JxlDecoderSetBoxBuffer, dec.get(), exif_data.data() + output_pos, exif_data.size() - output_pos);
-        }
-        else if (status == JXL_DEC_SUCCESS)
-        {
-            break;
-        }
-        else
-        {
-            return std::unexpected("Unknown decoder status");
-        }
-    }
-
-    if (!exif_data.empty())
-        return parse_jxl_exif(exif_data, dec.get());
-
-    return nullopt;
 }
 
 
@@ -838,6 +880,8 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     uint32_t height,
     uint32_t channels,
     uint32_t bit_depth,
+    optional<binary> exif_binary,
+    optional<vector<pair<atom, binary>>> jxl_boxes,
     double distance,
     bool lossless,
     int effort,
@@ -849,6 +893,9 @@ expected<vector<uint8_t>, string_view> jxl_compress(
 
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     JXL_ENSURE_SUCCESS(JxlEncoderSetParallelRunner, enc.get(), JxlThreadParallelRunner, runner.get());
+
+    if (exif_binary.has_value() || jxl_boxes.has_value())
+        JXL_ENSURE_SUCCESS(JxlEncoderUseBoxes, enc.get());
 
     JxlPixelFormat pixel_format
         = { channels, bit_depth == 16 ? JXL_TYPE_UINT16 : JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
@@ -879,6 +926,28 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     if (order > 0)
     {
         JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_GROUP_ORDER, order);
+    }
+
+    if (exif_binary.has_value())
+    {
+        const JxlBoxType exif_box_type = { 'E', 'x', 'i', 'f' };
+        vector<uint8_t> exif_box(4 + exif_binary->size);
+        exif_box[0] = exif_box[1] = exif_box[2] = exif_box[3] = 0;
+        std::copy_n(exif_binary->data, exif_binary->size, exif_box.data() + 4);
+        JXL_ENSURE_SUCCESS(JxlEncoderAddBox, enc.get(), exif_box_type, exif_box.data(), exif_box.size(), JXL_FALSE);
+    }
+
+    if (jxl_boxes.has_value())
+    {
+        for (const auto& [box_type_atom, box_contents] : jxl_boxes.value())
+        {
+            optional<array<char, 4>> box_type = jxl_box_type_from_atom(box_type_atom);
+            if (!box_type.has_value())
+                return std::unexpected("unsupported JXL metadata box type");
+
+            JXL_ENSURE_SUCCESS(
+                JxlEncoderAddBox, enc.get(), box_type->data(), box_contents.data, box_contents.size, JXL_FALSE);
+        }
     }
 
     JXL_ENSURE_SUCCESS(JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, pixels.size);
@@ -1036,7 +1105,13 @@ expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t docume
             std::swap(pixels.data[i], pixels.data[i + 2]);
     }
 
-    return make_decompress_result(std::move(pixels), width, height, channels, 8u);
+    return decompress_result_t {
+        .pixels = std::move(pixels),
+        .width = width,
+        .height = height,
+        .channels = channels,
+        .bit_depth = 8u,
+    };
 }
 
 typedef resource<TIFFWrapper> tiff_resource_t;
@@ -1078,8 +1153,13 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
     binary pixels { static_cast<size_t>(width * height * 4) };
     TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), 1, 0);
 
-    return make_decompress_result(
-        std::move(pixels), static_cast<uint32_t>(width), static_cast<uint32_t>(height), 4u, 8u);
+    return decompress_result_t {
+        .pixels = std::move(pixels),
+        .width = static_cast<uint32_t>(width),
+        .height = static_cast<uint32_t>(height),
+        .channels = 4u,
+        .bit_depth = 8u,
+    };
 }
 
 
@@ -1104,7 +1184,6 @@ MODULE(
     def(png_decompress, DirtyFlags::DirtyCpu),
     def(png_compress, DirtyFlags::DirtyCpu),
     def(jxl_decompress, DirtyFlags::DirtyCpu),
-    def(jxl_read_exif, DirtyFlags::DirtyCpu),
     def(jxl_compress, DirtyFlags::DirtyCpu),
     def(jxl_transcode_from_jpeg, DirtyFlags::DirtyCpu),
     def(jxl_transcode_to_jpeg, DirtyFlags::DirtyCpu),

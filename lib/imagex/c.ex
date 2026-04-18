@@ -7,8 +7,7 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, png_decompress: 1}
   @dialyzer {:nowarn_function, png_compress: 6}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
-  @dialyzer {:nowarn_function, jxl_read_exif: 1}
-  @dialyzer {:nowarn_function, jxl_compress: 10}
+  @dialyzer {:nowarn_function, jxl_compress: 12}
   @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
   @dialyzer {:nowarn_function, jxl_transcode_to_jpeg: 1}
   @dialyzer {:nowarn_function, pdf_load_document: 1}
@@ -20,7 +19,8 @@ defmodule Imagex.C do
 
   @type decompress_ret_type ::
           {:ok,
-           {binary(), integer(), integer(), integer(), integer(), binary() | nil, list({binary(), binary()}) | nil}}
+           {binary(), integer(), integer(), integer(), integer(), binary() | nil, list({binary(), binary()}),
+            list(binary()), list(binary())}}
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
 
@@ -62,17 +62,14 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_read_exif(binary()) :: {:ok, binary()} | {:error, String.t()} | nil
-  def jxl_read_exif(_bytes) do
-    exit(:nif_library_not_loaded)
-  end
-
   @spec jxl_compress(
           binary(),
           integer(),
           integer(),
           integer(),
           integer(),
+          binary() | nil,
+          list({atom(), binary()}) | nil,
           float(),
           boolean(),
           integer(),
@@ -86,6 +83,8 @@ defmodule Imagex.C do
         _height,
         _channels,
         _bit_depth,
+        _exif_binary,
+        _jxl_boxes,
         _distance,
         _lossless,
         _effort,

@@ -276,6 +276,42 @@ defmodule ImagexTest do
              ]
     end
 
+    test "decode official conformance grayscale fixture" do
+      jxl_bytes = File.read!("test/assets/jxl/conformance-grayscale.jxl")
+      {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+
+      assert image.tensor.shape == {200, 200}
+      assert image.tensor.type == {:u, 8}
+      assert image.metadata == nil
+    end
+
+    test "decode official conformance progressive fixture" do
+      jxl_bytes = File.read!("test/assets/jxl/conformance-progressive.jxl")
+      {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+
+      assert image.tensor.shape == {2704, 4064, 3}
+      assert image.tensor.type == {:u, 8}
+      assert image.metadata == nil
+    end
+
+    test "decode official exif and xmp metadata fixture" do
+      jxl_bytes = File.read!("test/assets/jxl/1x1_exif_xmp.jxl")
+      {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
+
+      assert image.tensor.shape == {1, 1, 3}
+      assert image.tensor.type == {:u, 8}
+
+      assert image.metadata.exif.ifd0.image_description == "Created with GIMP"
+      assert image.metadata.exif.ifd0.software == "GIMP 2.10.28"
+      assert image.metadata.exif.ifd0.x_resolution == {300, 1}
+      assert image.metadata.exif.ifd0.y_resolution == {300, 1}
+
+      [%{type: :xml, contents: contents}] = image.metadata.jxl_boxes
+
+      assert contents =~ "<dc:title>"
+      assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
+    end
+
     test "encode rgb image", %{image: test_image} do
       png_bytes = File.read!("test/assets/lena.png")
 
@@ -291,6 +327,43 @@ defmodule ImagexTest do
       # we decompress the lossless compressed bytes, we should get back the exact same input
       {:ok, %Image{} = roundtrip_image_lossless} = Imagex.decode(compressed_bytes_lossless, format: :jxl)
       assert roundtrip_image_lossless.tensor == test_image.tensor
+    end
+
+    test "encode image preserves exif metadata from Image struct", %{image: test_image} do
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(File.read!("test/assets/lena.jpg"), format: :jpeg)
+      image = %Image{tensor: test_image.tensor, metadata: metadata}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
+
+      assert encoded_metadata.exif == metadata.exif
+    end
+
+    test "encode image preserves jxl box metadata", %{image: test_image} do
+      metadata = %{
+        jxl_boxes: [%{type: :xml, contents: "<x:xmpmeta>Hello</x:xmpmeta>"}, %{type: :jumb, contents: <<1, 2, 3>>}]
+      }
+
+      image = %Image{tensor: test_image.tensor, metadata: metadata}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
+
+      assert encoded_metadata == metadata
+    end
+
+    test "encode image returns error for malformed jxl metadata", %{image: test_image} do
+      image = %Image{tensor: test_image.tensor, metadata: %{jxl_boxes: :bad_metadata}}
+
+      assert {:error, "JXL metadata must be a list, got: :bad_metadata"} = Imagex.encode(image, :jxl)
+
+      image = %Image{tensor: test_image.tensor, metadata: %{jxl_boxes: [%{type: :xml, contents: 123}]}}
+
+      assert {:error, "JXL metadata contents must be binaries, got: 123"} = Imagex.encode(image, :jxl)
+
+      image = %Image{tensor: test_image.tensor, metadata: %{jxl_boxes: [%{type: :nope, contents: "bad"}]}}
+
+      assert {:error, "unsupported JXL metadata box type: :nope"} = Imagex.encode(image, :jxl)
     end
 
     test "encode with increasing distances", %{image: test_image} do

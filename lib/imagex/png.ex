@@ -3,6 +3,7 @@ defmodule Imagex.Png do
 
   @spec metadata_from_texts(list({binary(), binary()}) | nil) :: map()
   def metadata_from_texts(nil), do: %{}
+  def metadata_from_texts([]), do: %{}
 
   def metadata_from_texts(png_texts) when is_list(png_texts) do
     %{
