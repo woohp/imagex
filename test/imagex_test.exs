@@ -82,7 +82,21 @@ defmodule ImagexTest do
       # should it be the same as our test PPM image
       assert Nx.to_binary(image.tensor) == Nx.to_binary(test_image.tensor)
       assert image.tensor.shape == test_image.tensor.shape
-      assert image.metadata == nil
+
+      %{png_chunks: [%{text: xmp_text}]} = image.metadata
+
+      assert image.metadata == %{
+               png_chunks: [
+                 %{
+                   keyword: "XML:com.adobe.xmp",
+                   text: xmp_text,
+                   language_tag: "",
+                   translated_keyword: ""
+                 }
+               ]
+             }
+
+      assert xmp_text =~ "<x:xmpmeta"
     end
 
     test "decode image returns :error for bad input" do
@@ -155,7 +169,40 @@ defmodule ImagexTest do
       {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
 
       assert metadata == %{
-               png_chunks: [%{keyword: "Author", text: "Imagex"}, %{keyword: "Comment", text: "Hello"}]
+               png_chunks: [
+                 %{keyword: "Author", text: "Imagex", language_tag: "", translated_keyword: ""},
+                 %{keyword: "Comment", text: "Hello", language_tag: "", translated_keyword: ""}
+               ]
+             }
+    end
+
+    test "encode image preserves png iTXt metadata fields", %{image: test_image} do
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{
+          png_chunks: [
+            %{
+              keyword: "Title",
+              text: "Miyazaki 宮崎",
+              language_tag: "ja",
+              translated_keyword: "タイトル"
+            }
+          ]
+        }
+      }
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :png)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
+
+      assert metadata == %{
+               png_chunks: [
+                 %{
+                   keyword: "Title",
+                   text: "Miyazaki 宮崎",
+                   language_tag: "ja",
+                   translated_keyword: "タイトル"
+                 }
+               ]
              }
     end
 
@@ -169,7 +216,10 @@ defmodule ImagexTest do
       {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
 
       assert metadata == %{
-               png_chunks: [%{keyword: "Tag", text: "first"}, %{keyword: "Tag", text: "second"}]
+               png_chunks: [
+                 %{keyword: "Tag", text: "first", language_tag: "", translated_keyword: ""},
+                 %{keyword: "Tag", text: "second", language_tag: "", translated_keyword: ""}
+               ]
              }
     end
 
@@ -183,6 +233,31 @@ defmodule ImagexTest do
       image = %Image{tensor: test_image.tensor, metadata: %{png_chunks: [%{keyword: "Tag", text: 123}]}}
 
       assert {:error, "PNG text values must be binaries, got: 123"} = Imagex.encode(image, :png)
+    end
+
+    test "encode image returns error for malformed png iTXt language tag", %{image: test_image} do
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{png_chunks: [%{keyword: "Tag", text: "value", language_tag: 123}]}
+      }
+
+      assert {:error, "PNG language tags must be binaries, got: 123"} = Imagex.encode(image, :png)
+    end
+
+    test "decode image preserves zTXt metadata" do
+      png_bytes = png_with_ztxt("Comment", "hello ztxt 世界")
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes, format: :png)
+
+      assert metadata == %{
+               png_chunks: [
+                 %{
+                   keyword: "Comment",
+                   text: "hello ztxt 世界",
+                   language_tag: "",
+                   translated_keyword: ""
+                 }
+               ]
+             }
     end
 
     test "encode rgba image" do
@@ -578,5 +653,30 @@ defmodule ImagexTest do
 
     {:ok, %Image{} = image} = Imagex.Tiff.render_page(tiff, 0)
     assert image.tensor.shape == {512, 512, 4}
+  end
+
+  defp png_with_ztxt(keyword, text) do
+    tensor = Nx.broadcast(Nx.tensor([0, 0, 0], type: {:u, 8}), {8, 8, 3})
+    {:ok, png_bytes} = Imagex.encode(tensor, :png)
+
+    [signature, ihdr_chunk | remaining_chunks] = split_png_chunks(png_bytes)
+    ztxt_chunk = png_chunk("zTXt", <<keyword::binary, 0, 0, :zlib.compress(text)::binary>>)
+
+    IO.iodata_to_binary([signature, ihdr_chunk, ztxt_chunk, remaining_chunks])
+  end
+
+  defp split_png_chunks(<<signature::binary-size(8), rest::binary>>) do
+    [signature | split_png_chunks(rest, [])]
+  end
+
+  defp split_png_chunks(<<>>, acc), do: Enum.reverse(acc)
+
+  defp split_png_chunks(<<length::32, type::binary-size(4), data::binary-size(length), crc::32, rest::binary>>, acc) do
+    split_png_chunks(rest, [<<length::32, type::binary, data::binary, crc::32>> | acc])
+  end
+
+  defp png_chunk(type, data) do
+    crc = :erlang.crc32([type, data])
+    <<byte_size(data)::32, type::binary-size(4), data::binary, crc::32>>
   end
 end

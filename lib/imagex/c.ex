@@ -19,8 +19,8 @@ defmodule Imagex.C do
 
   @type decompress_ret_type ::
           {:ok,
-           {binary(), integer(), integer(), integer(), integer(), binary() | nil, list({binary(), binary()}),
-            list(binary()), list(binary())}}
+           {binary(), integer(), integer(), integer(), integer(), binary() | nil,
+            list({binary(), binary(), binary(), binary()}), list(binary()), list(binary())}}
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
 
@@ -51,7 +51,14 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec png_compress(binary(), integer(), integer(), integer(), integer(), list({binary(), binary()}) | nil) ::
+  @spec png_compress(
+          binary(),
+          integer(),
+          integer(),
+          integer(),
+          integer(),
+          list({binary(), binary(), binary(), binary()}) | nil
+        ) ::
           compress_ret_type()
   def png_compress(_pixels, _width, _height, _channels, _bit_depth, _png_texts) do
     exit(:nif_library_not_loaded)

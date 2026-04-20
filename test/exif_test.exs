@@ -42,8 +42,8 @@ defmodule ExifTest do
 
     assert metadata == %{
              png_chunks: [
-               %{keyword: "MyNewString", text: "A string"},
-               %{keyword: "MyNewInt", text: "1234"}
+               %{keyword: "MyNewString", text: "A string", language_tag: "", translated_keyword: ""},
+               %{keyword: "MyNewInt", text: "1234", language_tag: "", translated_keyword: ""}
              ]
            }
   end

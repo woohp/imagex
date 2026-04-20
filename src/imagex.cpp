@@ -28,7 +28,8 @@
 using namespace std;
 using namespace expp;
 
-using text_chunks_t = std::vector<pair<binary, binary>>;
+using text_chunk_t = std::tuple<binary, binary, binary, binary>;
+using text_chunks_t = std::vector<text_chunk_t>;
 
 struct decompress_result_t
 {
@@ -386,14 +387,22 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             {
                 for (int i = 0; i < num_text; i++)
                 {
-                    // TODO: handle iTxt/zTxt compressed text chunks
-                    if (text_ptr[i].compression != PNG_TEXT_COMPRESSION_NONE)
-                        continue;
-
                     binary key = binary::from_bytes(text_ptr[i].key, strlen(text_ptr[i].key));
-                    binary text = binary::from_bytes(text_ptr[i].text, text_ptr[i].text_length);
+                    png_size_t text_length = text_ptr[i].text_length;
+                    if (text_ptr[i].compression == PNG_ITXT_COMPRESSION_NONE
+                        || text_ptr[i].compression == PNG_ITXT_COMPRESSION_zTXt)
+                    {
+                        text_length = text_ptr[i].itxt_length;
+                    }
 
-                    text_data.push_back({ std::move(key), std::move(text) });
+                    binary text = binary::from_bytes(text_ptr[i].text, text_length);
+                    string_view lang = text_ptr[i].lang != nullptr ? text_ptr[i].lang : "";
+                    string_view translated_keyword = text_ptr[i].lang_key != nullptr ? text_ptr[i].lang_key : "";
+                    binary language_tag = binary::from_bytes(lang.data(), lang.size());
+                    binary translated = binary::from_bytes(translated_keyword.data(), translated_keyword.size());
+
+                    text_data.push_back(
+                        { std::move(key), std::move(text), std::move(language_tag), std::move(translated) });
                 }
             }
         }
@@ -426,7 +435,7 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
     uint32_t height,
     uint32_t channels,
     uint32_t bit_depth,
-    optional<vector<pair<binary, binary>>> text_chunks)
+    optional<text_chunks_t> text_chunks)
 {
     yielding_timer timer;
 
@@ -496,22 +505,32 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
         {
             vector<string> text_keys;
             vector<string> text_values;
+            vector<string> language_tags;
+            vector<string> translated_keywords;
             vector<png_text> png_text_entries;
 
             text_keys.reserve(text_chunks->size());
             text_values.reserve(text_chunks->size());
+            language_tags.reserve(text_chunks->size());
+            translated_keywords.reserve(text_chunks->size());
             png_text_entries.reserve(text_chunks->size());
 
-            for (const auto& [key, value] : *text_chunks)
+            for (const auto& [key, value, language_tag, translated_keyword] : *text_chunks)
             {
                 text_keys.emplace_back(reinterpret_cast<const char*>(key.data), key.size);
                 text_values.emplace_back(reinterpret_cast<const char*>(value.data), value.size);
+                language_tags.emplace_back(reinterpret_cast<const char*>(language_tag.data), language_tag.size);
+                translated_keywords.emplace_back(
+                    reinterpret_cast<const char*>(translated_keyword.data), translated_keyword.size);
 
                 png_text entry = { };
-                entry.compression = PNG_TEXT_COMPRESSION_NONE;
+                entry.compression = PNG_ITXT_COMPRESSION_NONE;
                 entry.key = text_keys.back().data();
                 entry.text = text_values.back().data();
                 entry.text_length = text_values.back().size();
+                entry.itxt_length = text_values.back().size();
+                entry.lang = language_tags.back().data();
+                entry.lang_key = translated_keywords.back().data();
                 png_text_entries.push_back(entry);
             }
 

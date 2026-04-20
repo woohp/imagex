@@ -123,7 +123,12 @@ tensor = Nx.broadcast(Nx.tensor([0, 0, 0], type: {:u, 8}), {16, 16, 3})
     metadata: %{
       png_chunks: [
         %{keyword: "Author", text: "Imagex"},
-        %{keyword: "Comment", text: "Hello from Imagex"}
+        %{
+          keyword: "Comment",
+          text: "Hello from Imagex",
+          language_tag: "en",
+          translated_keyword: "Comment"
+        }
       ]
     }
   )
@@ -152,7 +157,12 @@ PNG text metadata uses `metadata.png_chunks`:
 %{
   png_chunks: [
     %{keyword: "Author", text: "Imagex"},
-    %{keyword: "Comment", text: "Hello from Imagex"}
+    %{
+      keyword: "Comment",
+      text: "Hello from Imagex",
+      language_tag: "en",
+      translated_keyword: "Comment"
+    }
   ]
 }
 ```
@@ -171,7 +181,8 @@ JXL container metadata uses `metadata.jxl_boxes` with atom box types:
 Notes:
 
 - `metadata.exif` is used for JPEG and JXL writing.
-- `metadata.png_chunks` currently writes PNG text metadata as `tEXt` chunks.
+- `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
+- PNG text metadata is normalized on decode and written as `iTXt` chunks.
 - `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
 - Unsupported or malformed metadata returns `{:error, reason}` during encode.
 
