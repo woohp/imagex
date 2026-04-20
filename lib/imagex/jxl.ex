@@ -9,6 +9,7 @@ defmodule Imagex.Jxl do
   @dialyzer {:nowarn_function, read_metadata_from_jxl: 1}
 
   @type box_type :: :xml | :jumb
+  @xmp_box_type :xml
 
   @typedoc """
   Effort level for JXL encoding.
@@ -58,7 +59,8 @@ defmodule Imagex.Jxl do
 
   def metadata_to_boxes(metadata) when is_map(metadata) do
     with {:ok, exif_binary} <- exif_binary_from_metadata(metadata),
-         {:ok, jxl_boxes} <- jxl_boxes_from_metadata(metadata) do
+         {:ok, xmp} <- xmp_from_metadata(metadata),
+         {:ok, jxl_boxes} <- jxl_boxes_from_metadata(metadata, xmp) do
       {:ok, {exif_binary, jxl_boxes}}
     end
   end
@@ -77,6 +79,12 @@ defmodule Imagex.Jxl do
         %{}
       end
 
+    xmp_metadata =
+      case xml_boxes do
+        [xmp] -> %{xmp: xmp}
+        _ -> %{}
+      end
+
     jxl_metadata =
       [
         Enum.map(xml_boxes, &%{type: :xml, contents: &1}),
@@ -88,7 +96,7 @@ defmodule Imagex.Jxl do
         jxl_boxes -> %{jxl_boxes: jxl_boxes}
       end
 
-    metadata = Map.merge(exif_metadata, jxl_metadata)
+    metadata = exif_metadata |> Map.merge(xmp_metadata) |> Map.merge(jxl_metadata)
     if metadata == %{}, do: nil, else: metadata
   end
 
@@ -116,10 +124,18 @@ defmodule Imagex.Jxl do
     end
   end
 
-  defp jxl_boxes_from_metadata(metadata) do
+  defp xmp_from_metadata(metadata) do
+    case Map.get(metadata, :xmp) do
+      nil -> {:ok, nil}
+      xmp when is_binary(xmp) -> {:ok, xmp}
+      xmp -> {:error, "XMP metadata must be a binary, got: #{inspect(xmp)}"}
+    end
+  end
+
+  defp jxl_boxes_from_metadata(metadata, xmp) do
     case Map.get(metadata, :jxl_boxes) do
       nil ->
-        {:ok, nil}
+        xmp_to_jxl_boxes(xmp, [])
 
       jxl_boxes when is_list(jxl_boxes) ->
         jxl_boxes
@@ -129,13 +145,23 @@ defmodule Imagex.Jxl do
           {:error, _} = error, _acc -> {:halt, error}
         end)
         |> case do
-          {:ok, []} -> {:ok, nil}
-          {:ok, boxes} -> {:ok, Enum.reverse(boxes)}
+          {:ok, boxes} -> xmp_to_jxl_boxes(xmp, Enum.reverse(boxes))
           error -> error
         end
 
       jxl_boxes ->
         {:error, "JXL metadata must be a list, got: #{inspect(jxl_boxes)}"}
+    end
+  end
+
+  defp xmp_to_jxl_boxes(nil, []), do: {:ok, nil}
+  defp xmp_to_jxl_boxes(nil, boxes), do: {:ok, boxes}
+
+  defp xmp_to_jxl_boxes(xmp, boxes) do
+    if Enum.any?(boxes, fn {type, _contents} -> type == @xmp_box_type end) do
+      {:error, "metadata.xmp cannot be combined with JXL xml boxes in metadata.jxl_boxes"}
+    else
+      {:ok, [{@xmp_box_type, xmp} | boxes]}
     end
   end
 

@@ -7,48 +7,78 @@ defmodule Imagex.Jfif do
   """
 
   @jpeg_start_of_image 0xFFD8
+  @jpeg_app1_xmp_identifier "http://ns.adobe.com/xap/1.0/\0"
 
   def read_metadata_from_jpeg(bytes) when is_binary(bytes) do
-    <<@jpeg_start_of_image::16, rest::binary>> = bytes
-    read_metadata_from_jpeg_impl(rest)
-  end
+    case bytes do
+      <<@jpeg_start_of_image::16, rest::binary>> ->
+        read_metadata_from_jpeg_impl(rest, %{})
 
-  defp read_metadata_from_jpeg_impl(bytes) do
-    {metadata, rest} =
-      case bytes do
-        <<0xFFE0::16, len::16-big, rest::binary>> ->
-          len = len - 2
-          <<app0_data::binary-size(len), rest::binary>> = rest
-          {parse_jfif(app0_data), rest}
-
-        <<0xFFE1::16, app1_data_length::16-big, "Exif"::binary, 0::16, app1_data::binary>> ->
-          <<app1_data::binary-size(app1_data_length), rest::binary>> = app1_data
-          {Imagex.Exif.read_exif_from_tiff(app1_data), rest}
-
-        _ ->
-          {nil, nil}
-      end
-
-    if is_nil(metadata) do
-      nil
-    else
-      rest_metadata = read_metadata_from_jpeg_impl(rest)
-
-      cond do
-        is_nil(rest_metadata) ->
-          metadata
-
-        # recursively merge the jfif metadata, if necessary
-        Map.has_key?(rest_metadata, :jfif) and Map.has_key?(metadata, :jfif) ->
-          {jfif1, metadata} = Map.pop(metadata, :jfif)
-          {jfif2, rest_metadata} = Map.pop(rest_metadata, :jfif)
-          Map.merge(Map.merge(metadata, rest_metadata), %{jfif: Map.merge(jfif1, jfif2)})
-
-        true ->
-          Map.merge(metadata, rest_metadata)
-      end
+      _ ->
+        nil
     end
   end
+
+  defp read_metadata_from_jpeg_impl(<<>>, metadata), do: blank_to_nil(metadata)
+
+  defp read_metadata_from_jpeg_impl(<<0xFFE0::16, len::16-big, rest::binary>>, metadata) do
+    payload_length = len - 2
+
+    case rest do
+      <<payload::binary-size(payload_length), remaining::binary>> ->
+        case parse_jfif(payload) do
+          nil -> blank_to_nil(metadata)
+          app0_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app0_metadata))
+        end
+
+      _ ->
+        blank_to_nil(metadata)
+    end
+  end
+
+  defp read_metadata_from_jpeg_impl(<<0xFFE1::16, len::16-big, rest::binary>>, metadata) do
+    payload_length = len - 2
+
+    case rest do
+      <<payload::binary-size(payload_length), remaining::binary>> ->
+        case parse_app1(payload) do
+          nil -> blank_to_nil(metadata)
+          app1_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app1_metadata))
+        end
+
+      _ ->
+        blank_to_nil(metadata)
+    end
+  end
+
+  defp read_metadata_from_jpeg_impl(_, metadata), do: blank_to_nil(metadata)
+
+  defp parse_app1(<<"Exif", 0::16, app1_data::binary>>) do
+    Imagex.Exif.read_exif_from_tiff(app1_data)
+  end
+
+  defp parse_app1(<<@jpeg_app1_xmp_identifier, xmp::binary>>) do
+    %{xmp: xmp}
+  end
+
+  defp parse_app1(_), do: nil
+
+  defp merge_metadata(metadata, nil), do: metadata
+
+  defp merge_metadata(metadata, new_metadata) do
+    cond do
+      Map.has_key?(metadata, :jfif) and Map.has_key?(new_metadata, :jfif) ->
+        {jfif1, metadata} = Map.pop(metadata, :jfif)
+        {jfif2, new_metadata} = Map.pop(new_metadata, :jfif)
+        Map.merge(Map.merge(metadata, new_metadata), %{jfif: Map.merge(jfif1, jfif2)})
+
+      true ->
+        Map.merge(metadata, new_metadata)
+    end
+  end
+
+  defp blank_to_nil(metadata) when metadata == %{}, do: nil
+  defp blank_to_nil(metadata), do: metadata
 
   defp parse_jfif(
          <<"JFIF\0"::binary, version_major::8, version_minor::8, density_units::8, density_x::16, density_y::16,

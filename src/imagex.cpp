@@ -30,6 +30,7 @@ using namespace expp;
 
 using text_chunk_t = std::tuple<binary, binary, binary, binary>;
 using text_chunks_t = std::vector<text_chunk_t>;
+constexpr string_view JPEG_XMP_APP1_IDENTIFIER = "http://ns.adobe.com/xap/1.0/\0"sv;
 
 struct decompress_result_t
 {
@@ -183,7 +184,8 @@ yielding<expected<binary, string>> jpeg_compress(
     uint32_t height,
     uint32_t channels,
     int quality,
-    optional<binary> exif_binary)
+    optional<binary> exif_binary,
+    optional<binary> xmp_binary)
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
@@ -221,6 +223,24 @@ yielding<expected<binary, string>> jpeg_compress(
         if (app1_payload.size() > 65533)
         {
             co_yield std::unexpected("EXIF metadata is too large for a JPEG APP1 segment");
+            co_return;
+        }
+
+        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, app1_payload.data(), static_cast<unsigned int>(app1_payload.size()));
+    }
+
+    if (xmp_binary.has_value())
+    {
+        const auto& xmp = xmp_binary.value();
+        vector<uint8_t> app1_payload;
+        app1_payload.reserve(JPEG_XMP_APP1_IDENTIFIER.size() + xmp.size);
+        app1_payload.insert(
+            app1_payload.end(), JPEG_XMP_APP1_IDENTIFIER.begin(), JPEG_XMP_APP1_IDENTIFIER.end());
+        app1_payload.insert(app1_payload.end(), xmp.data, xmp.data + xmp.size);
+
+        if (app1_payload.size() > 65533)
+        {
+            co_yield std::unexpected("XMP metadata is too large for a JPEG APP1 segment");
             co_return;
         }
 

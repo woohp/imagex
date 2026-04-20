@@ -2,32 +2,50 @@ defmodule Imagex.Png do
   @moduledoc false
 
   @type png_text_t :: {binary(), binary(), binary(), binary()}
+  @xmp_keyword "XML:com.adobe.xmp"
 
   @spec metadata_from_texts(list(png_text_t) | nil) :: map()
   def metadata_from_texts(nil), do: %{}
   def metadata_from_texts([]), do: %{}
 
   def metadata_from_texts(png_texts) when is_list(png_texts) do
-    %{
-      png_chunks:
-        Enum.map(png_texts, fn {keyword, text, language_tag, translated_keyword} ->
-          %{
-            keyword: keyword,
-            text: text,
-            language_tag: language_tag,
-            translated_keyword: translated_keyword
-          }
-        end)
-    }
+    png_chunks =
+      Enum.map(png_texts, fn {keyword, text, language_tag, translated_keyword} ->
+        %{
+          keyword: keyword,
+          text: text,
+          language_tag: language_tag,
+          translated_keyword: translated_keyword
+        }
+      end)
+
+    xmp_metadata =
+      case Enum.filter(png_chunks, &(&1.keyword == @xmp_keyword)) do
+        [%{text: xmp}] -> %{xmp: xmp}
+        _ -> %{}
+      end
+
+    %{png_chunks: png_chunks}
+    |> Map.merge(xmp_metadata)
   end
 
   @spec texts_from_metadata(map() | nil) :: {:ok, list(png_text_t) | nil} | {:error, String.t()}
   def texts_from_metadata(nil), do: {:ok, nil}
 
   def texts_from_metadata(metadata) when is_map(metadata) do
+    with {:ok, png_texts} <- png_texts_from_metadata(metadata),
+         {:ok, xmp_text} <- xmp_text_from_metadata(metadata) do
+      prepend_xmp_text(png_texts, xmp_text)
+    end
+  end
+
+  def texts_from_metadata(metadata),
+    do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
+
+  defp png_texts_from_metadata(metadata) do
     case Map.get(metadata, :png_chunks) do
       nil ->
-        {:ok, nil}
+        {:ok, []}
 
       png_chunks when is_list(png_chunks) ->
         png_chunks
@@ -46,8 +64,30 @@ defmodule Imagex.Png do
     end
   end
 
-  def texts_from_metadata(metadata),
-    do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
+  defp xmp_text_from_metadata(metadata) do
+    case Map.get(metadata, :xmp) do
+      nil ->
+        {:ok, nil}
+
+      xmp when is_binary(xmp) ->
+        {:ok, xmp}
+
+      xmp ->
+        {:error, "XMP metadata must be a binary, got: #{inspect(xmp)}"}
+    end
+  end
+
+  defp prepend_xmp_text(png_texts, nil) do
+    if png_texts == [], do: {:ok, nil}, else: {:ok, png_texts}
+  end
+
+  defp prepend_xmp_text(png_texts, xmp) do
+    if Enum.any?(png_texts, fn {keyword, _text, _language_tag, _translated_keyword} -> keyword == @xmp_keyword end) do
+      {:error, "metadata.xmp cannot be combined with PNG XMP chunks in metadata.png_chunks"}
+    else
+      {:ok, [{@xmp_keyword, xmp, "", ""} | png_texts]}
+    end
+  end
 
   defp text_from_chunk(%{keyword: keyword, text: text} = chunk) do
     with :ok <- validate_chunk_keys(chunk),

@@ -36,11 +36,12 @@ defmodule Imagex do
 
   def encode(image, :jpeg, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, quality: 75, metadata: nil),
-         {:ok, exif_binary} <- exif_binary_from_metadata(Keyword.get(options, :metadata)) do
+         {:ok, exif_binary} <- exif_binary_from_metadata(Keyword.get(options, :metadata)),
+         {:ok, xmp_binary} <- xmp_binary_from_metadata(Keyword.get(options, :metadata)) do
       quality = Keyword.get(options, :quality)
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
-      Imagex.C.jpeg_compress(pixels, w, h, c, quality, exif_binary)
+      Imagex.C.jpeg_compress(pixels, w, h, c, quality, exif_binary, xmp_binary)
     else
       error -> error
     end
@@ -151,7 +152,7 @@ defmodule Imagex do
         case to_tensor(Imagex.C.jpeg_decompress(bytes), parse_metadata) do
           {:ok, %Image{tensor: tensor, metadata: nil} = image} ->
             if parse_metadata do
-              {:ok, %Image{tensor: tensor, metadata: Imagex.Exif.read_exif_from_jpeg(bytes)}}
+              {:ok, %Image{tensor: tensor, metadata: Imagex.Jfif.read_metadata_from_jpeg(bytes)}}
             else
               {:ok, image}
             end
@@ -265,6 +266,19 @@ defmodule Imagex do
   end
 
   defp exif_binary_from_metadata(metadata),
+    do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
+
+  defp xmp_binary_from_metadata(nil), do: {:ok, nil}
+
+  defp xmp_binary_from_metadata(metadata) when is_map(metadata) do
+    case Map.get(metadata, :xmp) do
+      nil -> {:ok, nil}
+      xmp when is_binary(xmp) -> {:ok, xmp}
+      xmp -> {:error, "XMP metadata must be a binary, got: #{inspect(xmp)}"}
+    end
+  end
+
+  defp xmp_binary_from_metadata(metadata),
     do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
 
   defp standardize_shape({h, w}), do: {h, w, 1}

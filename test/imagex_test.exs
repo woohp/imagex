@@ -37,6 +37,16 @@ defmodule ImagexTest do
       assert encoded_metadata.exif == metadata.exif
     end
 
+    test "encode image preserves xmp metadata", %{image: test_image} do
+      xmp = sample_xmp("jpeg-xmp")
+      image = %Image{tensor: test_image.tensor, metadata: %{xmp: xmp}}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jpeg)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jpeg)
+
+      assert encoded_metadata.xmp == xmp
+    end
+
     test "encode image preserves thumbnail-bearing exif metadata" do
       jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
       {:ok, %Image{} = source_image} = Imagex.decode(jpeg_bytes, format: :jpeg)
@@ -86,6 +96,7 @@ defmodule ImagexTest do
       %{png_chunks: [%{text: xmp_text}]} = image.metadata
 
       assert image.metadata == %{
+               xmp: xmp_text,
                png_chunks: [
                  %{
                    keyword: "XML:com.adobe.xmp",
@@ -97,6 +108,7 @@ defmodule ImagexTest do
              }
 
       assert xmp_text =~ "<x:xmpmeta"
+      assert image.metadata.xmp == xmp_text
     end
 
     test "decode image returns :error for bad input" do
@@ -174,6 +186,38 @@ defmodule ImagexTest do
                  %{keyword: "Comment", text: "Hello", language_tag: "", translated_keyword: ""}
                ]
              }
+    end
+
+    test "encode image writes metadata.xmp as a PNG XMP chunk", %{image: test_image} do
+      xmp = sample_xmp("png-xmp")
+      image = %Image{tensor: test_image.tensor, metadata: %{xmp: xmp}}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :png)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
+
+      assert metadata.xmp == xmp
+
+      assert metadata.png_chunks == [
+               %{
+                 keyword: "XML:com.adobe.xmp",
+                 text: xmp,
+                 language_tag: "",
+                 translated_keyword: ""
+               }
+             ]
+    end
+
+    test "encode image rejects duplicate PNG XMP metadata", %{image: test_image} do
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{
+          xmp: sample_xmp("png-duplicate"),
+          png_chunks: [%{keyword: "XML:com.adobe.xmp", text: sample_xmp("png-existing")}]
+        }
+      }
+
+      assert {:error, "metadata.xmp cannot be combined with PNG XMP chunks in metadata.png_chunks"} =
+               Imagex.encode(image, :png)
     end
 
     test "encode image preserves png iTXt metadata fields", %{image: test_image} do
@@ -383,6 +427,7 @@ defmodule ImagexTest do
 
       [%{type: :xml, contents: contents}] = image.metadata.jxl_boxes
 
+      assert image.metadata.xmp == contents
       assert contents =~ "<dc:title>"
       assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
     end
@@ -424,7 +469,38 @@ defmodule ImagexTest do
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
       {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
 
-      assert encoded_metadata == metadata
+      assert encoded_metadata.xmp == "<x:xmpmeta>Hello</x:xmpmeta>"
+      assert encoded_metadata.jxl_boxes == metadata.jxl_boxes
+    end
+
+    test "encode image writes metadata.xmp as a JXL xml box", %{image: test_image} do
+      xmp = sample_xmp("jxl-xmp")
+      image = %Image{tensor: test_image.tensor, metadata: %{xmp: xmp}}
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
+
+      assert encoded_metadata.xmp == xmp
+      assert encoded_metadata.jxl_boxes == [%{type: :xml, contents: xmp}]
+    end
+
+    test "encode image preserves metadata.xmp alongside non-xml JXL boxes", %{image: test_image} do
+      xmp = sample_xmp("jxl-xmp-with-jumb")
+
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{xmp: xmp, jxl_boxes: [%{type: :jumb, contents: <<1, 2, 3>>}]}
+      }
+
+      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+      {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
+
+      assert encoded_metadata.xmp == xmp
+
+      assert encoded_metadata.jxl_boxes == [
+               %{type: :xml, contents: xmp},
+               %{type: :jumb, contents: <<1, 2, 3>>}
+             ]
     end
 
     test "encode image returns error for malformed jxl metadata", %{image: test_image} do
@@ -439,6 +515,18 @@ defmodule ImagexTest do
       image = %Image{tensor: test_image.tensor, metadata: %{jxl_boxes: [%{type: :nope, contents: "bad"}]}}
 
       assert {:error, "unsupported JXL metadata box type: :nope"} = Imagex.encode(image, :jxl)
+
+      image = %Image{tensor: test_image.tensor, metadata: %{xmp: 123}}
+
+      assert {:error, "XMP metadata must be a binary, got: 123"} = Imagex.encode(image, :jxl)
+
+      image = %Image{
+        tensor: test_image.tensor,
+        metadata: %{xmp: sample_xmp("duplicate-jxl"), jxl_boxes: [%{type: :xml, contents: sample_xmp("existing-jxl")}]}
+      }
+
+      assert {:error, "metadata.xmp cannot be combined with JXL xml boxes in metadata.jxl_boxes"} =
+               Imagex.encode(image, :jxl)
     end
 
     test "encode with increasing distances", %{image: test_image} do
@@ -678,5 +766,18 @@ defmodule ImagexTest do
   defp png_chunk(type, data) do
     crc = :erlang.crc32([type, data])
     <<byte_size(data)::32, type::binary-size(4), data::binary, crc::32>>
+  end
+
+  defp sample_xmp(label) do
+    """
+    <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">
+      <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">
+        <rdf:Description xmlns:dc=\"http://purl.org/dc/elements/1.1/\">
+          <dc:title>#{label}</dc:title>
+        </rdf:Description>
+      </rdf:RDF>
+    </x:xmpmeta>
+    """
+    |> String.trim()
   end
 end
