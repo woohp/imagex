@@ -151,6 +151,14 @@ EXIF uses the common `metadata.exif` shape across formats:
 }
 ```
 
+XMP uses the common `metadata.xmp` shape across formats:
+
+```elixir
+%{
+  xmp: "<x:xmpmeta>...</x:xmpmeta>"
+}
+```
+
 PNG text metadata uses `metadata.png_chunks`:
 
 ```elixir
@@ -181,9 +189,12 @@ JXL container metadata uses `metadata.jxl_boxes` with atom box types:
 Notes:
 
 - `metadata.exif` is used for JPEG and JXL writing.
+- `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, and JXL XML boxes.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
 - PNG text metadata is normalized on decode and written as `iTXt` chunks.
+- When decoding PNG and JXL, `metadata.xmp` is surfaced in addition to the primary container representation (`png_chunks` or `jxl_boxes`) when there is a single unambiguous XMP payload.
 - `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
+- `metadata.xmp` cannot be combined with JXL XML boxes in `metadata.jxl_boxes`, or with PNG XMP chunks in `metadata.png_chunks`.
 - Unsupported or malformed metadata returns `{:error, reason}` during encode.
 
 To work with pdf files
