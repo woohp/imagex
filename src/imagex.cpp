@@ -28,7 +28,7 @@
 using namespace std;
 using namespace expp;
 
-using text_chunk_t = std::tuple<binary, binary, binary, binary>;
+using text_chunk_t = std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::vector<uint8_t>, std::vector<uint8_t>>;
 using text_chunks_t = std::vector<text_chunk_t>;
 constexpr string_view JPEG_XMP_APP1_IDENTIFIER = "http://ns.adobe.com/xap/1.0/\0"sv;
 
@@ -184,8 +184,8 @@ yielding<expected<binary, string>> jpeg_compress(
     uint32_t height,
     uint32_t channels,
     int quality,
-    optional<binary> exif_binary,
-    optional<binary> xmp_binary)
+    optional<vector<uint8_t>> exif_binary,
+    optional<vector<uint8_t>> xmp_binary)
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
@@ -216,9 +216,9 @@ yielding<expected<binary, string>> jpeg_compress(
     {
         const auto& exif = exif_binary.value();
         vector<uint8_t> app1_payload;
-        app1_payload.reserve(6 + exif.size);
+        app1_payload.reserve(6 + exif.size());
         app1_payload.insert(app1_payload.end(), { 'E', 'x', 'i', 'f', 0, 0 });
-        app1_payload.insert(app1_payload.end(), exif.data, exif.data + exif.size);
+        app1_payload.insert(app1_payload.end(), exif.data(), exif.data() + exif.size());
 
         if (app1_payload.size() > 65533)
         {
@@ -233,10 +233,9 @@ yielding<expected<binary, string>> jpeg_compress(
     {
         const auto& xmp = xmp_binary.value();
         vector<uint8_t> app1_payload;
-        app1_payload.reserve(JPEG_XMP_APP1_IDENTIFIER.size() + xmp.size);
-        app1_payload.insert(
-            app1_payload.end(), JPEG_XMP_APP1_IDENTIFIER.begin(), JPEG_XMP_APP1_IDENTIFIER.end());
-        app1_payload.insert(app1_payload.end(), xmp.data, xmp.data + xmp.size);
+        app1_payload.reserve(JPEG_XMP_APP1_IDENTIFIER.size() + xmp.size());
+        app1_payload.insert(app1_payload.end(), JPEG_XMP_APP1_IDENTIFIER.begin(), JPEG_XMP_APP1_IDENTIFIER.end());
+        app1_payload.insert(app1_payload.end(), xmp.data(), xmp.data() + xmp.size());
 
         if (app1_payload.size() > 65533)
         {
@@ -407,7 +406,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             {
                 for (int i = 0; i < num_text; i++)
                 {
-                    binary key = binary::from_bytes(text_ptr[i].key, strlen(text_ptr[i].key));
+                    vector<uint8_t> key(text_ptr[i].key, text_ptr[i].key + strlen(text_ptr[i].key));
                     png_size_t text_length = text_ptr[i].text_length;
                     if (text_ptr[i].compression == PNG_ITXT_COMPRESSION_NONE
                         || text_ptr[i].compression == PNG_ITXT_COMPRESSION_zTXt)
@@ -415,11 +414,11 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
                         text_length = text_ptr[i].itxt_length;
                     }
 
-                    binary text = binary::from_bytes(text_ptr[i].text, text_length);
+                    vector<uint8_t> text(text_ptr[i].text, text_ptr[i].text + text_length);
                     string_view lang = text_ptr[i].lang != nullptr ? text_ptr[i].lang : "";
                     string_view translated_keyword = text_ptr[i].lang_key != nullptr ? text_ptr[i].lang_key : "";
-                    binary language_tag = binary::from_bytes(lang.data(), lang.size());
-                    binary translated = binary::from_bytes(translated_keyword.data(), translated_keyword.size());
+                    vector<uint8_t> language_tag(lang.begin(), lang.end());
+                    vector<uint8_t> translated(translated_keyword.begin(), translated_keyword.end());
 
                     text_data.push_back(
                         { std::move(key), std::move(text), std::move(language_tag), std::move(translated) });
@@ -537,11 +536,11 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
 
             for (const auto& [key, value, language_tag, translated_keyword] : *text_chunks)
             {
-                text_keys.emplace_back(reinterpret_cast<const char*>(key.data), key.size);
-                text_values.emplace_back(reinterpret_cast<const char*>(value.data), value.size);
-                language_tags.emplace_back(reinterpret_cast<const char*>(language_tag.data), language_tag.size);
+                text_keys.emplace_back(reinterpret_cast<const char*>(key.data()), key.size());
+                text_values.emplace_back(reinterpret_cast<const char*>(value.data()), value.size());
+                language_tags.emplace_back(reinterpret_cast<const char*>(language_tag.data()), language_tag.size());
                 translated_keywords.emplace_back(
-                    reinterpret_cast<const char*>(translated_keyword.data), translated_keyword.size);
+                    reinterpret_cast<const char*>(translated_keyword.data()), translated_keyword.size());
 
                 png_text entry = { };
                 entry.compression = PNG_ITXT_COMPRESSION_NONE;

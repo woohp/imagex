@@ -1,5 +1,5 @@
 defmodule Imagex.C do
-  @on_load :init
+  use Expp, ext: "./priv/imagex"
 
   # Dialyzer suppressions for NIF stub functions that call exit()
   @dialyzer {:nowarn_function, jpeg_decompress: 1}
@@ -15,26 +15,12 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, tiff_load_document: 1}
   @dialyzer {:nowarn_function, tiff_render_page: 2}
 
-  app = Mix.Project.config()[:app]
-
   @type decompress_ret_type ::
           {:ok,
            {binary(), integer(), integer(), integer(), integer(), binary() | nil,
             list({binary(), binary(), binary(), binary()}), list(binary()), list(binary())}}
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
-
-  @spec init() :: :ok
-  def init do
-    base_path =
-      case :code.priv_dir(unquote(app)) do
-        {:error, :bad_name} -> ~c"priv"
-        dir -> dir
-      end
-
-    path = :filename.join(base_path, ~c"imagex")
-    :ok = :erlang.load_nif(path, 0)
-  end
 
   @spec jpeg_decompress(binary()) :: decompress_ret_type()
   def jpeg_decompress(_bytes) do
