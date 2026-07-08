@@ -25,7 +25,7 @@ defmodule Imagex.Jfif do
     payload_length = len - 2
 
     case rest do
-      <<payload::binary-size(payload_length), remaining::binary>> ->
+      <<payload::binary-size(^payload_length), remaining::binary>> ->
         case parse_jfif(payload) do
           nil -> blank_to_nil(metadata)
           app0_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app0_metadata))
@@ -40,7 +40,7 @@ defmodule Imagex.Jfif do
     payload_length = len - 2
 
     case rest do
-      <<payload::binary-size(payload_length), remaining::binary>> ->
+      <<payload::binary-size(^payload_length), remaining::binary>> ->
         case parse_app1(payload) do
           nil -> blank_to_nil(metadata)
           app1_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app1_metadata))
@@ -62,8 +62,6 @@ defmodule Imagex.Jfif do
   end
 
   defp parse_app1(_), do: nil
-
-  defp merge_metadata(metadata, nil), do: metadata
 
   defp merge_metadata(metadata, new_metadata) do
     cond do

@@ -1234,25 +1234,23 @@ defmodule Imagex.Exif do
 
   defp encode_byte_sequence(value, _signed, _type) when is_binary(value), do: {:ok, {byte_size(value), value}}
 
-  defp encode_byte_sequence(value, signed, type) do
+  defp encode_byte_sequence(value, signed, _type) do
     values = List.wrap(value)
 
     with {:ok, data} <- encode_many(values, &encode_integer(&1, 8, signed)) do
       {:ok, {length(values), data}}
     else
       {:error, _} = error -> error
-      _ -> {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
     end
   end
 
-  defp encode_integer_sequence(value, bits, signed, type) do
+  defp encode_integer_sequence(value, bits, signed, _type) do
     values = List.wrap(value)
 
     with {:ok, data} <- encode_many(values, &encode_integer(&1, bits, signed)) do
       {:ok, {length(values), data}}
     else
       {:error, _} = error -> error
-      _ -> {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
     end
   end
 
@@ -1410,10 +1408,11 @@ defmodule Imagex.Exif do
   end
 
   def parse_ifds(app1_data, endian, offset) do
-    <<_::binary-size(offset), num_entries::binary-size(2), rest::binary>> = app1_data
+    <<_::binary-size(^offset), num_entries::binary-size(2), rest::binary>> = app1_data
     num_entries = :binary.decode_unsigned(num_entries, endian)
+    ifd_buffer_size = num_entries * 12
 
-    <<idf_buffer::binary-size(num_entries * 12), next_idf_offset::binary-size(4), _rest::binary>> = rest
+    <<idf_buffer::binary-size(^ifd_buffer_size), next_idf_offset::binary-size(4), _rest::binary>> = rest
     next_idf_offset = :binary.decode_unsigned(next_idf_offset, endian)
 
     tags =
@@ -1459,7 +1458,7 @@ defmodule Imagex.Exif do
     data_value =
       if total_bytes_size > 4 do
         value_offset = :binary.decode_unsigned(data_value, endian)
-        <<_::binary-size(value_offset), data_value::binary-size(total_bytes_size), _::binary>> = app1_data
+        <<_::binary-size(^value_offset), data_value::binary-size(^total_bytes_size), _::binary>> = app1_data
         data_value
       else
         data_value
@@ -1543,38 +1542,41 @@ defmodule Imagex.Exif do
     if count == 1 do
       apply(fun, [data_value | args])
     else
-      for <<chunk::binary-size(bytes_per_component) <- data_value>> do
+      for <<chunk::binary-size(^bytes_per_component) <- data_value>> do
         apply(fun, [chunk | args])
       end
     end
   end
 
   defp decode_integer(buffer, num_bytes, signed, endian) do
+    num_bits = num_bytes * 8
+
     if signed do
       case endian do
         :little ->
-          <<value::integer-signed-size(num_bytes * 8)-little, _rest::binary>> = buffer
+          <<value::integer-signed-size(^num_bits)-little, _rest::binary>> = buffer
           value
 
         :big ->
-          <<value::integer-signed-size(num_bytes * 8)-big, _rest::binary>> = buffer
+          <<value::integer-signed-size(^num_bits)-big, _rest::binary>> = buffer
           value
       end
     else
       case endian do
         :little ->
-          <<value::integer-unsigned-size(num_bytes * 8)-little, _rest::binary>> = buffer
+          <<value::integer-unsigned-size(^num_bits)-little, _rest::binary>> = buffer
           value
 
         :big ->
-          <<value::integer-unsigned-size(num_bytes * 8)-big, _rest::binary>> = buffer
+          <<value::integer-unsigned-size(^num_bits)-big, _rest::binary>> = buffer
           value
       end
     end
   end
 
   defp decode_float(buffer, num_bytes) do
-    <<value::float-size(num_bytes * 8), _rest::binary>> = buffer
+    num_bits = num_bytes * 8
+    <<value::float-size(^num_bits), _rest::binary>> = buffer
     value
   end
 

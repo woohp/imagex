@@ -57,10 +57,10 @@ defmodule Imagex.BMP do
            _rest::binary
          >>
          when (dib_header_size == 40 or dib_header_size == 124) and bits_per_pixel in [24, 32] <- bytes,
-         <<_header::size(offset_to_pixels)-bytes, pixels::binary>> <- bytes do
+         <<_header::size(^offset_to_pixels)-bytes, pixels::binary>> <- bytes do
       channels = div(bits_per_pixel, 8)
 
-      pixels_exploded = for <<pixel::binary-size(channels) <- pixels>>, do: pixel
+      pixels_exploded = for <<pixel::binary-size(^channels) <- pixels>>, do: pixel
       # convert the pixels to RGB*
       pixels_exploded = Enum.map(pixels_exploded, &to_rgb/1)
 
