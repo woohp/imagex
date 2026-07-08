@@ -604,6 +604,24 @@ static_assert(JXL_ENC_SUCCESS == 0 && JXL_DEC_SUCCESS == 0);
     }
 
 
+static string_view unexpected_jxl_decoder_status_message(JxlDecoderStatus status)
+{
+    switch (status)
+    {
+    case JXL_DEC_NEED_PREVIEW_OUT_BUFFER:
+        return "JXL decoder requested unsupported preview output";
+    case JXL_DEC_FRAME:
+        return "JXL decoder returned unsupported frame event";
+    case JXL_DEC_FRAME_PROGRESSION:
+        return "JXL decoder returned unsupported frame progression event";
+    case JXL_DEC_BOX_COMPLETE:
+        return "JXL decoder returned unsupported box-complete event";
+    default:
+        return "Unknown or unsupported JXL decoder status";
+    }
+}
+
+
 enum class jxl_box_kind
 {
     none,
@@ -906,7 +924,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else
         {
-            return std::unexpected("Unknown decoder status");
+            return std::unexpected(unexpected_jxl_decoder_status_message(status));
         }
     }
 }
@@ -1069,7 +1087,7 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         }
         else
         {
-            return std::unexpected("Unknown decoder status");
+            return std::unexpected(unexpected_jxl_decoder_status_message(status));
         }
     }
 }

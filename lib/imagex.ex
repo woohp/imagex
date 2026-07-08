@@ -78,16 +78,9 @@ defmodule Imagex do
              metadata: nil
            ),
          bit_depth <- get_bit_depth(image),
+         lossless <- Keyword.get(options, :lossless),
+         {:ok, distance} <- parse_jxl_distance(Keyword.get(options, :distance), lossless),
          {:ok, {exif_binary, jxl_boxes}} <- Imagex.Jxl.metadata_to_boxes(Keyword.get(options, :metadata)) do
-      # + 0.0 to convert any integer to float
-      distance =
-        case Keyword.get(options, :distance) do
-          value when 0 <= value and value <= 15 -> value
-        end + 0.0
-
-      # the config variable must be boolean, but the impl expects an integer
-      lossless = Keyword.get(options, :lossless)
-
       effort = Imagex.Jxl.parse_effort(Keyword.get(options, :effort))
 
       progressive =
@@ -280,6 +273,12 @@ defmodule Imagex do
 
   defp xmp_binary_from_metadata(metadata),
     do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
+
+  defp parse_jxl_distance(0, false), do: {:error, "JXL distance 0 requires lossless: true"}
+
+  defp parse_jxl_distance(value, _lossless) when 0 <= value and value <= 15 do
+    {:ok, value + 0.0}
+  end
 
   defp standardize_shape({h, w}), do: {h, w, 1}
   defp standardize_shape({_h, _w, _c} = shape), do: shape
