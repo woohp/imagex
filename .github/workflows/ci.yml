@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: elixir:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            build-essential \
+            git \
+            libjpeg-dev \
+            libjxl-dev \
+            libpng-dev \
+            libpoppler-cpp-dev \
+            libtiff-dev
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Install Mix dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run tests
+        env:
+          MIX_ENV: test
+        run: mix test
