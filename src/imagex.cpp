@@ -789,7 +789,7 @@ JxlBasicInfo jxl_basic_info_from_pixel_format(const JxlPixelFormat& pixel_format
 expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
-    static auto runner = JxlResizableParallelRunnerMake(nullptr);
+    auto runner = JxlResizableParallelRunnerMake(nullptr);
 
     auto dec = JxlDecoderMake(nullptr);
     JXL_ENSURE_SUCCESS(
@@ -944,7 +944,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     int progressive,
     int order)
 {
-    static auto runner = JxlThreadParallelRunnerMake(
+    auto runner = JxlThreadParallelRunnerMake(
         /*memory_manager=*/nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
 
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
@@ -1033,7 +1033,7 @@ expected<vector<uint8_t>, string_view> jxl_transcode_from_jpeg(
 expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_bytes)
 {
     // Multi-threaded parallel runner.
-    static auto runner = JxlResizableParallelRunnerMake(nullptr);
+    auto runner = JxlResizableParallelRunnerMake(nullptr);
 
     auto dec = JxlDecoderMake(nullptr);
     JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_FULL_IMAGE | JXL_DEC_JPEG_RECONSTRUCTION);
