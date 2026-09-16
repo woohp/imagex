@@ -671,6 +671,25 @@ defmodule ImagexTest do
     end
   end
 
+  test "runs JXL operations concurrently" do
+    {:ok, image} = Imagex.decode(File.read!("test/assets/lena.ppm"), format: :ppm)
+    jxl_bytes = File.read!("test/assets/lena.jxl")
+    transcoded_jxl_bytes = File.read!("test/assets/lena-transcode.jxl")
+
+    for operation <- [
+          fn -> Imagex.encode(image, :jxl, lossless: true) end,
+          fn -> Imagex.decode(jxl_bytes, format: :jxl) end,
+          fn -> Imagex.Jxl.transcode_to_jpeg(transcoded_jxl_bytes) end
+        ] do
+      results =
+        1..8
+        |> Task.async_stream(fn _ -> operation.() end, max_concurrency: 8, timeout: :infinity)
+        |> Enum.map(fn {:ok, result} -> result end)
+
+      assert Enum.all?(results, &match?({:ok, _}, &1))
+    end
+  end
+
   test "decode ppm" do
     ppm_bytes = File.read!("test/assets/lena.ppm")
     {:ok, %Image{} = image} = Imagex.decode(ppm_bytes, format: :ppm)
