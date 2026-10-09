@@ -1,14 +1,14 @@
 # Imagex
 
-Load and save images, using libjpeg, libpng, libjxl, libtiff, and poppler as backends.
-Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf.
+Load and save images, using libjpeg, libpng, libjxl, libtiff, libwebp, and poppler as backends.
+Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf, webp (static images).
 
 Where possible, yielding NIFs are used so that it plays nice with BEAM VM's scheduler (WIP).
 
 
 ## Install
 
-Please ensure that libjpeg, libpng, libjxl, libtiff, and libpoppler are installed.
+Please ensure that libjpeg, libpng, libjxl, libtiff, libwebp, and libpoppler are installed. WebP requires only libwebp, not libwebpmux.
 
 ```elixir
 defp deps do
@@ -62,6 +62,7 @@ compressed = Imagex.encode(image, :jpeg)
 
 Supported metadata today:
 
+- WebP: EXIF and XMP read/write
 - JPEG: EXIF read/write
 - PNG: EXIF read, text chunk read/write
 - JXL: EXIF read/write, XML and JUMBF box read/write
@@ -216,3 +217,25 @@ for i <- 0..tiff_document.num_pages-1 do
   {:ok, image} = Imagex.Tiff.render_page(tiff_document, i)
 end
 ```
+
+## WebP
+
+```elixir
+{:ok, bytes} = Imagex.encode(image, :webp, quality: 75, effort: 4)
+{:ok, bytes} = Imagex.encode(image, :webp, lossless: true)
+{:ok, image} = Imagex.decode(bytes)
+:ok = Imagex.save(image, "image.webp", lossless: true)
+```
+
+Encoding accepts unsigned 8-bit tensors with 1–4 channels. Grayscale and
+grayscale-alpha are expanded to RGB and RGBA; decoding returns RGB or RGBA.
+Lossless encoding preserves RGB values beneath transparent pixels.
+
+Options: `quality` (0–100, default 75), `lossless` (boolean, default false),
+`effort` (0–6, default 4), and `metadata` (the existing EXIF/XMP map).
+In lossless mode, quality controls compression effort rather than pixel fidelity.
+Metadata parsing respects `parse_metadata: false`. Animated WebP is rejected;
+ICC color management is not supported.
+
+WebP tests use upstream libwebp test vectors and independently generated Pillow
+metadata fixtures. See `test/assets/webp/README.md` for provenance and regeneration.

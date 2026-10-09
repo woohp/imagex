@@ -21,6 +21,7 @@ jobs:
           apt-get install --yes --no-install-recommends \
             build-essential \
             git \
+            libwebp-dev \
             libjpeg-dev \
             libjxl-dev \
             libpng-dev \

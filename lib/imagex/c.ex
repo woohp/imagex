@@ -22,6 +22,16 @@ defmodule Imagex.C do
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
 
+  @dialyzer {:nowarn_function, webp_decompress: 1}
+  @dialyzer {:nowarn_function, webp_compress: 7}
+
+  @spec webp_decompress(binary()) :: decompress_ret_type()
+  def webp_decompress(_bytes), do: exit(:nif_library_not_loaded)
+
+  @spec webp_compress(binary(), integer(), integer(), integer(), float(), boolean(), integer()) :: compress_ret_type()
+  def webp_compress(_pixels, _width, _height, _channels, _quality, _lossless, _effort),
+    do: exit(:nif_library_not_loaded)
+
   @spec jpeg_decompress(binary()) :: decompress_ret_type()
   def jpeg_decompress(_bytes) do
     exit(:nif_library_not_loaded)

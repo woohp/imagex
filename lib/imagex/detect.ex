@@ -1,4 +1,6 @@
 defmodule Imagex.Detect do
+  def detect(<<"RIFF", _size::little-32, "WEBP", _rest::binary>>), do: :webp
+
   def detect(<<0xFFD8::size(16), _rest::binary>>), do: :jpeg
 
   def detect(<<0x89, "PNG\r\n", 0x1A, 0x0A, _rest::binary>>), do: :png
