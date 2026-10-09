@@ -1317,8 +1317,6 @@ MODULE(
     load,
     nullptr,
     nullptr,
-    def(webp_decompress, DirtyFlags::DirtyCpu),
-    def(webp_compress, DirtyFlags::DirtyCpu),
     def(jpeg_decompress, DirtyFlags::DirtyCpu),
     def(jpeg_compress, DirtyFlags::DirtyCpu),
     def(png_decompress, DirtyFlags::DirtyCpu),
@@ -1330,4 +1328,6 @@ MODULE(
     def(pdf_load_document, DirtyFlags::DirtyCpu),
     def(pdf_render_page, DirtyFlags::DirtyCpu),
     def(tiff_load_document, DirtyFlags::DirtyCpu),
-    def(tiff_render_page, DirtyFlags::DirtyCpu), )
+    def(tiff_render_page, DirtyFlags::DirtyCpu),
+    def(webp_decompress, DirtyFlags::DirtyCpu),
+    def(webp_compress, DirtyFlags::DirtyCpu), )

@@ -14,6 +14,8 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, pdf_render_page: 3}
   @dialyzer {:nowarn_function, tiff_load_document: 1}
   @dialyzer {:nowarn_function, tiff_render_page: 2}
+  @dialyzer {:nowarn_function, webp_decompress: 1}
+  @dialyzer {:nowarn_function, webp_compress: 7}
 
   @type decompress_ret_type ::
           {:ok,
@@ -21,16 +23,6 @@ defmodule Imagex.C do
             list({binary(), binary(), binary(), binary()}), list(binary()), list(binary())}}
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
-
-  @dialyzer {:nowarn_function, webp_decompress: 1}
-  @dialyzer {:nowarn_function, webp_compress: 7}
-
-  @spec webp_decompress(binary()) :: decompress_ret_type()
-  def webp_decompress(_bytes), do: exit(:nif_library_not_loaded)
-
-  @spec webp_compress(binary(), integer(), integer(), integer(), float(), boolean(), integer()) :: compress_ret_type()
-  def webp_compress(_pixels, _width, _height, _channels, _quality, _lossless, _effort),
-    do: exit(:nif_library_not_loaded)
 
   @spec jpeg_decompress(binary()) :: decompress_ret_type()
   def jpeg_decompress(_bytes) do
@@ -125,6 +117,16 @@ defmodule Imagex.C do
 
   @spec tiff_render_page(reference(), integer()) :: decompress_ret_type()
   def tiff_render_page(_document, _page_idx) do
+    exit(:nif_library_not_loaded)
+  end
+
+  @spec webp_decompress(binary()) :: decompress_ret_type()
+  def webp_decompress(_bytes) do
+    exit(:nif_library_not_loaded)
+  end
+
+  @spec webp_compress(binary(), integer(), integer(), integer(), float(), boolean(), integer()) :: compress_ret_type()
+  def webp_compress(_pixels, _width, _height, _channels, _quality, _lossless, _effort) do
     exit(:nif_library_not_loaded)
   end
 end

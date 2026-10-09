@@ -1,6 +1,4 @@
 defmodule Imagex.Detect do
-  def detect(<<"RIFF", _size::little-32, "WEBP", _rest::binary>>), do: :webp
-
   def detect(<<0xFFD8::size(16), _rest::binary>>), do: :jpeg
 
   def detect(<<0x89, "PNG\r\n", 0x1A, 0x0A, _rest::binary>>), do: :png
@@ -18,6 +16,8 @@ defmodule Imagex.Detect do
   def detect(<<"MM", 0x002A::size(16), _rest::binary>>), do: :tiff
 
   def detect(<<"%PDF-1.", n::size(8), "\n%", _rest::binary>>) when n in ?0..?9, do: :pdf
+
+  def detect(<<"RIFF", _size::little-32, "WEBP", _rest::binary>>), do: :webp
 
   # we don't recognize anything else at this time
   def detect(_), do: nil

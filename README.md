@@ -56,16 +56,22 @@ or save to memory
 compressed = Imagex.encode(image, :jpeg)
 ```
 
+WebP encoding accepts unsigned 8-bit tensors with 1–4 channels; grayscale inputs
+expand to RGB/RGBA. Options are `quality` (0–100, default 75), `lossless`
+(default false), and `effort` (0–6, default 4). In lossless mode, quality controls
+compression effort rather than pixel fidelity. Animated WebP is rejected, and
+ICC color management is not supported.
+
 ## Metadata
 
 `Imagex.decode/2` returns `%Imagex.Image{metadata: ...}` when metadata is present.
 
 Supported metadata today:
 
-- WebP: EXIF and XMP read/write
 - JPEG: EXIF read/write
 - PNG: EXIF read, text chunk read/write
 - JXL: EXIF read/write, XML and JUMBF box read/write
+- WebP: EXIF and XMP read/write
 
 ### Reading metadata
 
@@ -189,8 +195,8 @@ JXL container metadata uses `metadata.jxl_boxes` with atom box types:
 
 Notes:
 
-- `metadata.exif` is used for JPEG and JXL writing.
-- `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, and JXL XML boxes.
+- `metadata.exif` is used for JPEG, JXL, and WebP writing.
+- `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, JXL XML boxes, and WebP XMP chunks.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
 - PNG text metadata is normalized on decode and written as `iTXt` chunks.
 - When decoding PNG and JXL, `metadata.xmp` is surfaced in addition to the primary container representation (`png_chunks` or `jxl_boxes`) when there is a single unambiguous XMP payload.
@@ -217,25 +223,3 @@ for i <- 0..tiff_document.num_pages-1 do
   {:ok, image} = Imagex.Tiff.render_page(tiff_document, i)
 end
 ```
-
-## WebP
-
-```elixir
-{:ok, bytes} = Imagex.encode(image, :webp, quality: 75, effort: 4)
-{:ok, bytes} = Imagex.encode(image, :webp, lossless: true)
-{:ok, image} = Imagex.decode(bytes)
-:ok = Imagex.save(image, "image.webp", lossless: true)
-```
-
-Encoding accepts unsigned 8-bit tensors with 1–4 channels. Grayscale and
-grayscale-alpha are expanded to RGB and RGBA; decoding returns RGB or RGBA.
-Lossless encoding preserves RGB values beneath transparent pixels.
-
-Options: `quality` (0–100, default 75), `lossless` (boolean, default false),
-`effort` (0–6, default 4), and `metadata` (the existing EXIF/XMP map).
-In lossless mode, quality controls compression effort rather than pixel fidelity.
-Metadata parsing respects `parse_metadata: false`. Animated WebP is rejected;
-ICC color management is not supported.
-
-WebP tests use upstream libwebp test vectors and independently generated Pillow
-metadata fixtures. See `test/assets/webp/README.md` for provenance and regeneration.

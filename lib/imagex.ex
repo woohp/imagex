@@ -316,7 +316,6 @@ defmodule Imagex do
 
   defp get_bit_depth(%Nx.Tensor{type: {:u, bit_depth}}), do: bit_depth
 
-  defp ext_to_format(".webp"), do: :webp
   defp ext_to_format(".jpeg"), do: :jpeg
   defp ext_to_format(".jpg"), do: :jpeg
   defp ext_to_format(".png"), do: :png
@@ -327,4 +326,5 @@ defmodule Imagex do
   defp ext_to_format(".pdf"), do: :pdf
   defp ext_to_format(".tiff"), do: :tiff
   defp ext_to_format(".tif"), do: :tiff
+  defp ext_to_format(".webp"), do: :webp
 end
