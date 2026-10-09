@@ -24,6 +24,8 @@
 #include <tiffio.hxx>
 #include <tuple>
 #include <vector>
+#include <webp/decode.h>
+#include <webp/encode.h>
 
 using namespace std;
 using namespace expp;
@@ -1218,6 +1220,100 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
 }
 
 
+expected<decompress_result_t, string_view> webp_decompress(binary bytes)
+{
+    // Read dimensions and alpha before allocating the output buffer.
+    WebPBitstreamFeatures features;
+    if (WebPGetFeatures(bytes.data, bytes.size, &features) != VP8_STATUS_OK)
+        return std::unexpected("invalid WebP data");
+    if (features.has_animation)
+        return std::unexpected("animated WebP is not supported");
+
+    // Decode directly into the BEAM-owned RGB or RGBA binary.
+    const uint32_t channels = features.has_alpha ? 4 : 3;
+    const size_t stride = static_cast<size_t>(features.width) * channels;
+    binary pixels(stride * features.height);
+    auto decoded = features.has_alpha ? WebPDecodeRGBAInto(bytes.data, bytes.size, pixels.data, pixels.size, stride)
+                                      : WebPDecodeRGBInto(bytes.data, bytes.size, pixels.data, pixels.size, stride);
+    if (!decoded)
+        return std::unexpected("failed to decode WebP");
+
+    return decompress_result_t{
+        .pixels = std::move(pixels),
+        .width = static_cast<uint32_t>(features.width),
+        .height = static_cast<uint32_t>(features.height),
+        .channels = channels,
+        .bit_depth = 8u,
+    };
+}
+
+struct webp_picture_guard
+{
+    WebPPicture* picture;
+    ~webp_picture_guard()
+    {
+        WebPPictureFree(picture);
+    }
+};
+
+struct webp_writer_guard
+{
+    WebPMemoryWriter* writer;
+    ~webp_writer_guard()
+    {
+        WebPMemoryWriterClear(writer);
+    }
+};
+
+expected<binary, string_view> webp_compress(
+    binary pixels, int width, int height, int channels, double quality, bool lossless, int effort)
+{
+    // Validate the raw pixel buffer before passing it to libwebp.
+    if (width <= 0 || height <= 0 || width > WEBP_MAX_DIMENSION || height > WEBP_MAX_DIMENSION)
+        return std::unexpected("invalid WebP dimensions");
+    if ((channels != 3 && channels != 4) || pixels.size != static_cast<size_t>(width) * height * channels)
+        return std::unexpected("invalid WebP pixel buffer");
+
+    // Configure compression; exact preserves hidden RGB in transparent pixels.
+    WebPConfig config;
+    if (!WebPConfigInit(&config))
+        return std::unexpected("failed to initialize WebP encoder");
+    config.quality = quality;
+    config.lossless = lossless;
+    config.method = effort;
+    config.exact = 1;
+    if (!WebPValidateConfig(&config))
+        return std::unexpected("invalid WebP encoder options");
+
+    // Import packed RGB/RGBA. ARGB storage is needed for lossless encoding.
+    WebPPicture picture;
+    if (!WebPPictureInit(&picture))
+        return std::unexpected("failed to initialize WebP picture");
+    webp_picture_guard picture_guard{&picture};
+    picture.width = width;
+    picture.height = height;
+    picture.use_argb = 1;
+    const bool imported = channels == 4 ? WebPPictureImportRGBA(&picture, pixels.data, width * channels)
+                                        : WebPPictureImportRGB(&picture, pixels.data, width * channels);
+    if (!imported)
+        return std::unexpected("failed to import WebP pixels");
+
+    // Encode to a native buffer, with both allocations released by the guards.
+    WebPMemoryWriter writer;
+    WebPMemoryWriterInit(&writer);
+    webp_writer_guard writer_guard{&writer};
+    picture.writer = WebPMemoryWrite;
+    picture.custom_ptr = &writer;
+    if (!WebPEncode(&config, &picture))
+        return std::unexpected("failed to encode WebP");
+
+    // Copy the encoded bytes into BEAM-owned memory before releasing the writer.
+    binary output(writer.size);
+    memcpy(output.data, writer.mem, writer.size);
+    return output;
+}
+
+
 int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
     pdf_resource_t::init(caller_env, "poppler");
@@ -1245,4 +1341,6 @@ MODULE(
     def(pdf_load_document, DirtyFlags::DirtyCpu),
     def(pdf_render_page, DirtyFlags::DirtyCpu),
     def(tiff_load_document, DirtyFlags::DirtyCpu),
-    def(tiff_render_page, DirtyFlags::DirtyCpu), )
+    def(tiff_render_page, DirtyFlags::DirtyCpu),
+    def(webp_decompress, DirtyFlags::DirtyCpu),
+    def(webp_compress, DirtyFlags::DirtyCpu), )

@@ -1,0 +1,62 @@
+{
+  "alpha_filter_3.webp": {
+    "width": 16,
+    "height": 16,
+    "channels": 4,
+    "sha256": "d889344d3a6cc0b3212f3a6991f622ffb499a5e3f979bcb29b43dd37311d7f54"
+  },
+  "alpha_no_compression.webp": {
+    "width": 16,
+    "height": 16,
+    "channels": 4,
+    "sha256": "d889344d3a6cc0b3212f3a6991f622ffb499a5e3f979bcb29b43dd37311d7f54"
+  },
+  "lossless-xmp.webp": {
+    "width": 32,
+    "height": 24,
+    "channels": 4,
+    "sha256": "1c8a3cc85598f929c491e6926eb87b9e7d80be34f51fc62c5bd70789e47cca3c"
+  },
+  "lossless1.webp": {
+    "width": 1000,
+    "height": 307,
+    "channels": 4,
+    "sha256": "112ecd393cabc4ccadbd4fde07843f6d999e6b870585cede7e77cd6207c9eae9"
+  },
+  "lossless_color_transform.webp": {
+    "width": 512,
+    "height": 512,
+    "channels": 3,
+    "sha256": "5fdce07f10f98638ae2d26831f12c749f4c070a250c49a23680d5c4ed269b818"
+  },
+  "lossy-alpha-exif-xmp.webp": {
+    "width": 32,
+    "height": 24,
+    "channels": 4,
+    "sha256": "70c1ee856274d35e39f1973f7f52e58483e75cbbdcc15840d83f4cef3e543c7b"
+  },
+  "lossy-exif.webp": {
+    "width": 32,
+    "height": 24,
+    "channels": 3,
+    "sha256": "8a28f0f64f2b247103fb550b4696cdd061af1b5aa875edf56b90e6aeec9e62f8"
+  },
+  "lossy_alpha1.webp": {
+    "width": 1000,
+    "height": 307,
+    "channels": 4,
+    "sha256": "30a4cf6ef4f7a75e771629420a2af9bea95767a62e1d6ddc426ae5f0467111b6"
+  },
+  "near_lossless_75.webp": {
+    "width": 256,
+    "height": 256,
+    "channels": 3,
+    "sha256": "2b86c71833c44f264fe1ac448d350b33d3b20009b3f127d43dbd56153a936421"
+  },
+  "test.webp": {
+    "width": 128,
+    "height": 128,
+    "channels": 3,
+    "sha256": "18f5c4d456175ab0d3215044b19c5e6cc0bf602c5418a1eaac0b3071d9130c6d"
+  }
+}

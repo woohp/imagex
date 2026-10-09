@@ -1,14 +1,14 @@
 # Imagex
 
-Load and save images, using libjpeg, libpng, libjxl, libtiff, and poppler as backends.
-Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf.
+Load and save images, using libjpeg, libpng, libjxl, libtiff, libwebp, and poppler as backends.
+Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf, webp (static images).
 
 Where possible, yielding NIFs are used so that it plays nice with BEAM VM's scheduler (WIP).
 
 
 ## Install
 
-Please ensure that libjpeg, libpng, libjxl, libtiff, and libpoppler are installed.
+Please ensure that libjpeg, libpng, libjxl, libtiff, libwebp, and libpoppler are installed. WebP requires only libwebp, not libwebpmux.
 
 ```elixir
 defp deps do
@@ -56,6 +56,12 @@ or save to memory
 compressed = Imagex.encode(image, :jpeg)
 ```
 
+WebP encoding accepts unsigned 8-bit tensors with 1–4 channels; grayscale inputs
+expand to RGB/RGBA. Options are `quality` (0–100, default 75), `lossless`
+(default false), and `effort` (0–6, default 4). In lossless mode, quality controls
+compression effort rather than pixel fidelity. Animated WebP is rejected, and
+ICC color management is not supported.
+
 ## Metadata
 
 `Imagex.decode/2` returns `%Imagex.Image{metadata: ...}` when metadata is present.
@@ -65,6 +71,7 @@ Supported metadata today:
 - JPEG: EXIF read/write
 - PNG: EXIF read, text chunk read/write
 - JXL: EXIF read/write, XML and JUMBF box read/write
+- WebP: EXIF and XMP read/write
 
 ### Reading metadata
 
@@ -188,8 +195,8 @@ JXL container metadata uses `metadata.jxl_boxes` with atom box types:
 
 Notes:
 
-- `metadata.exif` is used for JPEG and JXL writing.
-- `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, and JXL XML boxes.
+- `metadata.exif` is used for JPEG, JXL, and WebP writing.
+- `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, JXL XML boxes, and WebP XMP chunks.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
 - PNG text metadata is normalized on decode and written as `iTXt` chunks.
 - When decoding PNG and JXL, `metadata.xmp` is surfaced in addition to the primary container representation (`png_chunks` or `jxl_boxes`) when there is a single unambiguous XMP payload.

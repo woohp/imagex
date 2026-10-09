@@ -28,11 +28,36 @@ defmodule Imagex do
     end
   end
 
-  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
-  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
-  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp, keyword()) :: Imagex.C.compress_ret_type()
-  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp) :: Imagex.C.compress_ret_type()
+  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp | :webp, keyword()) :: Imagex.C.compress_ret_type()
+  @spec encode(Nx.Tensor.t(), :jpeg | :png | :jxl | :ppm | :bmp | :webp) :: Imagex.C.compress_ret_type()
+  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp | :webp, keyword()) :: Imagex.C.compress_ret_type()
+  @spec encode(Image.t(), :jpeg | :png | :jxl | :ppm | :bmp | :webp) :: Imagex.C.compress_ret_type()
   def encode(image, format, options \\ [])
+
+  def encode(image, :webp, options) when is_tensor(image) do
+    with {:ok, options} <- Keyword.validate(options, quality: 75, lossless: false, effort: 4, metadata: nil),
+         {:ok, exif} <- exif_binary_from_metadata(options[:metadata]),
+         {:ok, xmp} <- xmp_binary_from_metadata(options[:metadata]),
+         :ok <- Imagex.Webp.validate_options(options),
+         {:ok, tensor} <- Imagex.Webp.prepare_tensor(image),
+         {h, w, c} <- standardize_shape(tensor.shape),
+         {:ok, bytes} <-
+           Imagex.C.webp_compress(
+             Nx.to_binary(tensor),
+             w,
+             h,
+             c,
+             options[:quality] / 1,
+             options[:lossless],
+             options[:effort]
+           ) do
+      Imagex.Webp.put_metadata(bytes, w, h, c == 4, exif, xmp)
+    end
+  end
+
+  def encode(%Image{tensor: tensor, metadata: metadata}, :webp, options) do
+    encode(tensor, :webp, Keyword.put(options, :metadata, metadata))
+  end
 
   def encode(image, :jpeg, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, quality: 75, metadata: nil),
@@ -152,6 +177,12 @@ defmodule Imagex do
 
           {:error, _error_msg} = error ->
             error
+        end
+
+      :webp ->
+        with {:ok, image} <- to_tensor(Imagex.C.webp_decompress(bytes), false),
+             {:ok, metadata} <- Imagex.Webp.read_metadata(bytes, parse_metadata) do
+          {:ok, %{image | metadata: metadata}}
         end
 
       :png ->
@@ -295,4 +326,5 @@ defmodule Imagex do
   defp ext_to_format(".pdf"), do: :pdf
   defp ext_to_format(".tiff"), do: :tiff
   defp ext_to_format(".tif"), do: :tiff
+  defp ext_to_format(".webp"), do: :webp
 end

@@ -23,7 +23,7 @@ imagex:
 	$(MIX) compile
 
 priv/imagex.so: priv src/imagex.cpp
-	$(CXX) $(CFLAGS) -shared $(LDFLAGS) -o $@ src/imagex.cpp -ljpeg -lpng -ljxl -ljxl_threads -lpoppler-cpp -ltiff -ltiffxx
+	$(CXX) $(CFLAGS) -shared $(LDFLAGS) -o $@ src/imagex.cpp -lwebp -ljpeg -lpng -ljxl -ljxl_threads -lpoppler-cpp -ltiff -ltiffxx
 
 priv:
 	@mkdir -p priv

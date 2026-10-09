@@ -17,6 +17,8 @@ defmodule Imagex.Detect do
 
   def detect(<<"%PDF-1.", n::size(8), "\n%", _rest::binary>>) when n in ?0..?9, do: :pdf
 
+  def detect(<<"RIFF", _size::little-32, "WEBP", _rest::binary>>), do: :webp
+
   # we don't recognize anything else at this time
   def detect(_), do: nil
 end
