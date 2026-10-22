@@ -354,13 +354,43 @@ defmodule Imagex.Exif do
   end
 
   defp render_chain([node], offset) do
-    {node, _end_offset} = layout_ifd(node, offset)
-    [render_ifd(node)]
+    {table, body, _end_offset} = render_ifd(node, offset)
+    [table, <<0::32>>, body]
   end
 
   defp render_chain([node | rest], offset) do
-    {node, next_offset} = layout_ifd(node, offset)
-    [render_ifd(%{node | next_ifd_offset: next_offset}) | render_chain(rest, next_offset)]
+    {table, body, next_offset} = render_ifd(node, offset)
+    [table, <<next_offset::32-little>>, body | render_chain(rest, next_offset)]
+  end
+
+  # Returns the entry count and table, the bytes after the next-IFD pointer (out-of-line values,
+  # then child IFDs), and the offset where those bytes end. The caller writes the next-IFD pointer.
+  defp render_ifd(%{entries: entries}, offset) do
+    data_offset = offset + 2 + length(entries) * 12 + 4
+
+    {fields, {data, children_offset}} =
+      Enum.map_reduce(entries, {[], data_offset}, fn
+        %{kind: :child} = entry, acc -> {entry, acc}
+        %{kind: :value, data: data}, acc when byte_size(data) <= 4 -> {pad_to_four(data), acc}
+        %{data: data}, {out, at} -> {<<at::32-little>>, {[out, pad_to_even(data)], align_even(at + byte_size(data))}}
+      end)
+
+    {fields, {children, end_offset}} =
+      Enum.map_reduce(fields, {[], children_offset}, fn
+        %{child: child}, {out, at} ->
+          {table, body, child_end} = render_ifd(child, at)
+          {<<at::32-little>>, {[out, table, <<0::32>>, body], child_end}}
+
+        field, acc ->
+          {field, acc}
+      end)
+
+    table =
+      Enum.zip_with(entries, fields, fn entry, field ->
+        <<entry.tag_id::16-little, entry.type_id::16-little, entry.count::32-little, field::binary>>
+      end)
+
+    {[<<length(entries)::16-little>> | table], [data, children], end_offset}
   end
 
   defp build_ifd_node(ifd, location) do
@@ -382,7 +412,7 @@ defmodule Imagex.Exif do
 
     with {:ok, entries} <- collect_ok(entries),
          {:ok, entries} <- add_pointer_entries(entries, ifd, location) do
-      {:ok, %{entries: Enum.sort_by(entries, & &1.tag_id), next_ifd_offset: 0}}
+      {:ok, %{entries: Enum.sort_by(entries, & &1.tag_id)}}
     end
   end
 
@@ -514,70 +544,6 @@ defmodule Imagex.Exif do
   defp encode_integer(value, _bits, _signed) do
     {:error, "expected integer EXIF value, got: #{inspect(value)}"}
   end
-
-  defp layout_ifd(node, offset) do
-    entries = node.entries
-    data_offset = offset + 2 + length(entries) * 12 + 4
-
-    {entries, data_offset} =
-      Enum.map_reduce(entries, data_offset, fn entry, current_offset ->
-        case entry do
-          %{kind: :child} ->
-            {Map.put(entry, :value_offset, nil), current_offset}
-
-          %{kind: :value, data: data} when byte_size(data) <= 4 ->
-            {Map.put(entry, :value_offset, nil), current_offset}
-
-          %{data: data} ->
-            {Map.put(entry, :value_offset, current_offset), align_even(current_offset + byte_size(data))}
-        end
-      end)
-
-    {entries, end_offset} =
-      Enum.map_reduce(entries, data_offset, fn
-        %{kind: :child, child: child} = entry, current_offset ->
-          {child, child_end_offset} = layout_ifd(child, current_offset)
-          {%{entry | child: child, value_offset: current_offset}, child_end_offset}
-
-        entry, current_offset ->
-          {entry, current_offset}
-      end)
-
-    {%{node | entries: entries}, end_offset}
-  end
-
-  defp render_ifd(node) do
-    entries_bin = Enum.map(node.entries, &render_entry/1)
-    data_bin = Enum.map(node.entries, &render_entry_payload/1)
-
-    children_bin =
-      Enum.flat_map(node.entries, fn
-        %{kind: :child, child: child} -> [render_ifd(child)]
-        _ -> []
-      end)
-
-    IO.iodata_to_binary([
-      <<length(node.entries)::16-little>>,
-      entries_bin,
-      <<node.next_ifd_offset::32-little>>,
-      data_bin,
-      children_bin
-    ])
-  end
-
-  defp render_entry(entry) do
-    value_field =
-      case entry do
-        %{value_offset: nil, data: data} -> pad_to_four(data)
-        %{value_offset: value_offset} -> <<value_offset::32-little>>
-      end
-
-    <<entry.tag_id::16-little, entry.type_id::16-little, entry.count::32-little, value_field::binary-size(4)>>
-  end
-
-  defp render_entry_payload(%{kind: :child}), do: []
-  defp render_entry_payload(%{value_offset: nil}), do: []
-  defp render_entry_payload(%{data: data}), do: pad_to_even(data)
 
   defp align_even(value) when rem(value, 2) == 0, do: value
   defp align_even(value), do: value + 1
