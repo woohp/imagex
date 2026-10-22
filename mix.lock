@@ -3,7 +3,7 @@
   "dialyxir": {:hex, :dialyxir, "1.4.8", "7ef671a8aff9948b091d8c30f09467fbb16e77305cda451bce48109a0f5e021c", [:mix], [{:erlex, ">= 0.2.8", [hex: :erlex, repo: "hexpm", optional: false]}], "hexpm", "cbd5a851571e5dfeb32aaf2e840bfa98b7864cb3071bf2ef5d95d1276b12e072"},
   "elixir_make": {:hex, :elixir_make, "0.10.0", "16577e2583a79bb79237bbff349619ef5d80afffc07eac6e4faf0d00e2ddaf7d", [:mix], [], "hexpm", "dc1f09fb7fa68866b886abd5f0f3c83553b1a19a52359a899e92af1bb3b31982"},
   "erlex": {:hex, :erlex, "0.2.9", "7debbbaa9f4f368b8cd648983e0f1d7963028508e9c59e9d4ed504e94ef52a55", [:mix], [], "hexpm", "8cfffc0ec7159e6d73de2ab28a588064de80f88b2798d5cbe4482cbbc200178b"},
-  "expp": {:git, "https://github.com/woohp/expp.git", "14642c4894db6330cce1329d0caf5079e2be7e38", []},
+  "expp": {:git, "https://github.com/woohp/expp.git", "1836b6007cf461cd7c443484212cf6014e8ac1ae", []},
   "nx": {:hex, :nx, "1.0.0", "83d586079cb37d11a4cf8c0edaf2eccafe88aa2369e35ebdb1c3d78c43c8eb33", [:mix], [{:complex, "~> 1.0", [hex: :complex, repo: "hexpm", optional: false]}, {:telemetry, "~> 0.4.0 or ~> 1.0", [hex: :telemetry, repo: "hexpm", optional: false]}], "hexpm", "e06c7587efff7a3dfc1e2c92705943e319db20070359e9850c3921aaf26d6998"},
   "telemetry": {:hex, :telemetry, "1.4.2", "a0cb522801dffb1c49fe6e30561badffc7b6d0e180db1300df759faa22062855", [:rebar3], [], "hexpm", "928f6495066506077862c0d1646609eed891a4326bee3126ba54b60af61febb1"},
 }
