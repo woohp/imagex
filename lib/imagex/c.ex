@@ -4,19 +4,19 @@ defmodule Imagex.C do
   use Expp, path: Application.app_dir(:imagex, "priv/imagex")
 
   # Dialyzer suppressions for NIF stub functions that call exit()
-  @dialyzer {:nowarn_function, jpeg_decompress: 1}
+  @dialyzer {:nowarn_function, jpeg_decompress: 2}
   @dialyzer {:nowarn_function, jpeg_compress: 8}
-  @dialyzer {:nowarn_function, png_decompress: 1}
+  @dialyzer {:nowarn_function, png_decompress: 2}
   @dialyzer {:nowarn_function, png_compress: 7}
-  @dialyzer {:nowarn_function, jxl_decompress: 1}
+  @dialyzer {:nowarn_function, jxl_decompress: 2}
   @dialyzer {:nowarn_function, jxl_compress: 13}
   @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
   @dialyzer {:nowarn_function, jxl_transcode_to_jpeg: 1}
   @dialyzer {:nowarn_function, pdf_load_document: 1}
-  @dialyzer {:nowarn_function, pdf_render_page: 3}
+  @dialyzer {:nowarn_function, pdf_render_page: 4}
   @dialyzer {:nowarn_function, tiff_load_document: 1}
-  @dialyzer {:nowarn_function, tiff_render_page: 2}
-  @dialyzer {:nowarn_function, webp_decompress: 1}
+  @dialyzer {:nowarn_function, tiff_render_page: 3}
+  @dialyzer {:nowarn_function, webp_decompress: 2}
   @dialyzer {:nowarn_function, webp_compress: 7}
 
   @type decompress_ret_type ::
@@ -26,8 +26,8 @@ defmodule Imagex.C do
           | {:error, String.t()}
   @type compress_ret_type :: {:ok, binary()} | {:error, String.t()}
 
-  @spec jpeg_decompress(binary()) :: decompress_ret_type()
-  def jpeg_decompress(_bytes) do
+  @spec jpeg_decompress(binary(), non_neg_integer()) :: decompress_ret_type()
+  def jpeg_decompress(_bytes, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 
@@ -46,8 +46,8 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec png_decompress(binary()) :: decompress_ret_type()
-  def png_decompress(_bytes) do
+  @spec png_decompress(binary(), non_neg_integer()) :: decompress_ret_type()
+  def png_decompress(_bytes, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 
@@ -65,8 +65,8 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jxl_decompress(binary()) :: decompress_ret_type()
-  def jxl_decompress(_bytes) do
+  @spec jxl_decompress(binary(), non_neg_integer()) :: decompress_ret_type()
+  def jxl_decompress(_bytes, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 
@@ -119,8 +119,8 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec pdf_render_page(reference(), integer(), integer()) :: decompress_ret_type()
-  def pdf_render_page(_document, _page_idx, _dpi) do
+  @spec pdf_render_page(reference(), integer(), integer(), non_neg_integer()) :: decompress_ret_type()
+  def pdf_render_page(_document, _page_idx, _dpi, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 
@@ -129,13 +129,13 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec tiff_render_page(reference(), integer()) :: decompress_ret_type()
-  def tiff_render_page(_document, _page_idx) do
+  @spec tiff_render_page(reference(), integer(), non_neg_integer()) :: decompress_ret_type()
+  def tiff_render_page(_document, _page_idx, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 
-  @spec webp_decompress(binary()) :: decompress_ret_type()
-  def webp_decompress(_bytes) do
+  @spec webp_decompress(binary(), non_neg_integer()) :: decompress_ret_type()
+  def webp_decompress(_bytes, _max_pixels) do
     exit(:nif_library_not_loaded)
   end
 

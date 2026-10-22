@@ -14,6 +14,21 @@ defmodule Imagex.Image do
 
   @dialyzer {:nowarn_function, from_native: 2}
 
+  # Pillow's limit: decoding anything larger from untrusted input is more likely an attack than a photo.
+  @default_max_pixels 178_956_970
+
+  @doc false
+  def default_max_pixels, do: @default_max_pixels
+
+  # Validates a :max_pixels option, returning the limit the native decoders take (0 for none).
+  @doc false
+  def native_max_pixels(:infinity), do: 0
+  def native_max_pixels(max_pixels) when is_integer(max_pixels) and max_pixels > 0, do: max_pixels
+
+  def native_max_pixels(max_pixels) do
+    raise ArgumentError, "expected :max_pixels to be a positive integer or :infinity, got: #{inspect(max_pixels)}"
+  end
+
   # Builds an image from a native decoder result.
   @doc false
   def from_native(

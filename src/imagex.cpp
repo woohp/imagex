@@ -1,6 +1,7 @@
 #include "expp.hpp"
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstring>
 #include <erl_nif.h>
 #include <jpeglib.h>
@@ -72,6 +73,16 @@ struct type_cast<decompress_result_t>
 }  // namespace expp
 
 
+// Decoders check image dimensions against a caller-given limit before allocating, so a small file
+// cannot claim a huge image. A limit of 0 means none.
+static bool exceeds_max_pixels(uint64_t width, uint64_t height, uint64_t max_pixels)
+{
+    return max_pixels != 0 && width * height > max_pixels;
+}
+
+constexpr string_view MAX_PIXELS_ERROR = "image has more pixels than max_pixels allows";
+
+
 // Destroys a libjpeg compress or decompress struct when the scope exits.
 struct jpeg_guard
 {
@@ -91,7 +102,7 @@ void jpeg_error_exit(j_common_ptr cinfo)
 }
 
 
-yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint8_t> jpeg_bytes)
+yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint8_t> jpeg_bytes, uint64_t max_pixels)
 {
     struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
@@ -112,6 +123,11 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
     if (cinfo.jpeg_color_space == JCS_CMYK || cinfo.jpeg_color_space == JCS_YCCK)
     {
         co_yield std::unexpected("CMYK JPEG images are not supported");
+        co_return;
+    }
+    if (exceeds_max_pixels(cinfo.image_width, cinfo.image_height, max_pixels))
+    {
+        co_yield std::unexpected(string(MAX_PIXELS_ERROR));
         co_return;
     }
 
@@ -285,7 +301,7 @@ struct png_write_guard
 };
 
 
-yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes)
+yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes, uint64_t max_pixels)
 {
     yielding_timer timer;
 
@@ -325,6 +341,11 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
 
     const png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
     const png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
+    if (exceeds_max_pixels(width, height, max_pixels))
+    {
+        co_yield std::unexpected(MAX_PIXELS_ERROR);
+        co_return;
+    }
     const png_uint_32 source_bit_depth = png_get_bit_depth(png_ptr, info_ptr);
     const png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
 
@@ -588,7 +609,7 @@ static expected<vector<uint8_t>, string_view> jxl_collect_compressed(JxlEncoder*
 }
 
 
-expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes)
+expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes, uint64_t max_pixels)
 {
     // Multi-threaded parallel runner.
     auto runner = JxlResizableParallelRunnerMake(nullptr);
@@ -648,6 +669,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
                 return std::unexpected("floating-point JXL images are not supported");
             if (info.bits_per_sample > 16)
                 return std::unexpected("JXL images with more than 16 bits per sample are not supported");
+            if (exceeds_max_pixels(info.xsize, info.ysize, max_pixels))
+                return std::unexpected(MAX_PIXELS_ERROR);
 
             result.width = info.xsize;
             result.height = info.ysize;
@@ -916,13 +939,20 @@ expected<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes
 }
 
 
-expected<decompress_result_t, string_view> pdf_render_page(pdf_resource_t document_resource, int page_idx, int dpi)
+expected<decompress_result_t, string_view> pdf_render_page(
+    pdf_resource_t document_resource, int page_idx, int dpi, uint64_t max_pixels)
 {
     auto& document = document_resource.get();
     if (page_idx < 0 || page_idx >= document->pages())
         return std::unexpected("page index out of range");
 
     unique_ptr<poppler::page> page(document->create_page(page_idx));
+    // Page sizes are in points, 72 per inch. Round up, in floating point, so a fractional or huge
+    // page cannot slip under the limit.
+    const auto rect = page->page_rect();
+    const double page_pixels = std::ceil(rect.width() * dpi / 72) * std::ceil(rect.height() * dpi / 72);
+    if (max_pixels != 0 && page_pixels > static_cast<double>(max_pixels))
+        return std::unexpected(MAX_PIXELS_ERROR);
     poppler::page_renderer renderer;
     renderer.set_render_hints(
         poppler::page_renderer::antialiasing | poppler::page_renderer::text_antialiasing |
@@ -978,7 +1008,8 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
 }
 
 
-expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t document_resource, int page_index)
+expected<decompress_result_t, string_view> tiff_render_page(
+    tiff_resource_t document_resource, int page_index, uint64_t max_pixels)
 {
     auto& wrapper = document_resource.get();
     std::lock_guard lock(wrapper.mutex);
@@ -994,6 +1025,8 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
         return std::unexpected("failed to read TIFF image height");
     if (width <= 0 || height <= 0)
         return std::unexpected("invalid TIFF image dimensions");
+    if (exceeds_max_pixels(width, height, max_pixels))
+        return std::unexpected(MAX_PIXELS_ERROR);
 
     uint16_t orientation = ORIENTATION_TOPLEFT;
     TIFFGetFieldDefaulted(document, TIFFTAG_ORIENTATION, &orientation);
@@ -1058,7 +1091,7 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
 }
 
 
-expected<decompress_result_t, string_view> webp_decompress(binary bytes)
+expected<decompress_result_t, string_view> webp_decompress(binary bytes, uint64_t max_pixels)
 {
     // Read dimensions and alpha before allocating the output buffer.
     WebPBitstreamFeatures features;
@@ -1066,6 +1099,8 @@ expected<decompress_result_t, string_view> webp_decompress(binary bytes)
         return std::unexpected("invalid WebP data");
     if (features.has_animation)
         return std::unexpected("animated WebP is not supported");
+    if (exceeds_max_pixels(features.width, features.height, max_pixels))
+        return std::unexpected(MAX_PIXELS_ERROR);
 
     // Decode directly into the BEAM-owned RGB or RGBA binary.
     const uint32_t channels = features.has_alpha ? 4 : 3;
