@@ -637,6 +637,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             if (exceeds_max_pixels(info.xsize, info.ysize, max_pixels))
                 return std::unexpected(MAX_PIXELS_ERROR);
 
+            JxlResizableParallelRunnerSetThreads(
+                runner.get(), JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize));
             result.width = info.xsize;
             result.height = info.ysize;
             result.channels = info.num_color_channels + info.num_extra_channels;
@@ -794,12 +796,8 @@ expected<vector<uint8_t>, string_view> jxl_transcode_from_jpeg(
 
 expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_bytes)
 {
-    // Multi-threaded parallel runner.
-    auto runner = JxlResizableParallelRunnerMake(nullptr);
-
     auto dec = JxlDecoderMake(nullptr);
     JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_FULL_IMAGE | JXL_DEC_JPEG_RECONSTRUCTION);
-    JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
 
     JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
 
