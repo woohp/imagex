@@ -79,6 +79,13 @@ upright pixels; the tag is then reset to 1 so re-encoding doesn't rotate the ima
 
 JXL and TIFF pixels are always decoded upright.
 
+### Untrusted input
+
+Decoding refuses images larger than 178,956,970 pixels (Pillow's limit) before allocating any pixel
+memory, since a small file can claim a huge image. Raise or lift the limit with `max_pixels:`
+(`max_pixels: :infinity` disables it) on `decode/2`, `open/2`, `Imagex.Tiff.render_page/3` and
+`Imagex.Pdf.render_page/3`.
+
 ### Errors
 
 Invalid arguments (an unknown format or option, an out-of-range option value, a file extension with

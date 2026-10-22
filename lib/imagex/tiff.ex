@@ -15,7 +15,7 @@ defmodule Imagex.Tiff do
   @type t :: %__MODULE__{ref: reference(), num_pages: pos_integer()}
 
   @dialyzer {:nowarn_function, load: 1}
-  @dialyzer {:nowarn_function, render_page: 2}
+  @dialyzer {:nowarn_function, render_page: 3}
 
   @doc "Loads a TIFF document from its bytes."
   @spec load(binary()) :: {:ok, t()} | {:error, String.t()}
@@ -25,11 +25,20 @@ defmodule Imagex.Tiff do
     end
   end
 
-  @doc "Renders a zero-indexed page as an 8-bit RGBA image."
-  @spec render_page(t(), non_neg_integer()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
-  def render_page(%__MODULE__{ref: ref, num_pages: num_pages}, page_idx) do
+  @doc """
+  Renders a zero-indexed page as an 8-bit RGBA image.
+
+  Options:
+
+    * `:max_pixels` - as for `Imagex.decode/2`.
+  """
+  @spec render_page(t(), non_neg_integer(), keyword()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
+  def render_page(%__MODULE__{ref: ref, num_pages: num_pages}, page_idx, options \\ []) do
+    options = Keyword.validate!(options, max_pixels: Imagex.Image.default_max_pixels())
+    max_pixels = Imagex.Image.native_max_pixels(options[:max_pixels])
+
     if is_integer(page_idx) and page_idx in 0..(num_pages - 1)//1 do
-      Imagex.Image.from_native(Imagex.C.tiff_render_page(ref, page_idx), false)
+      Imagex.Image.from_native(Imagex.C.tiff_render_page(ref, page_idx, max_pixels), false)
     else
       {:error, "page index out of range"}
     end

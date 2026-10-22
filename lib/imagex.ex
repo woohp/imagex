@@ -49,6 +49,8 @@ defmodule Imagex do
     * `:format` - the format of `bytes`; detected from its signature by default.
     * `:parse_metadata` - whether to read metadata into `Imagex.Image.metadata` (default `true`).
     * `:page` - the zero-indexed page to decode from a TIFF (default `0`).
+    * `:max_pixels` - the largest width × height to decode (default 178,956,970), or `:infinity`. Larger
+      images return an error before any pixel memory is allocated, so a small file cannot claim a huge image.
     * `:orient` - whether to rotate and flip JPEG, PNG and WebP pixels as their EXIF orientation says,
       then set that orientation to 1 (default `false`). JXL and TIFF pixels are always returned upright,
       and a decoded JXL's EXIF orientation is set to 1 to match.
@@ -57,7 +59,16 @@ defmodule Imagex do
   """
   @spec decode(binary(), keyword()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes, options \\ []) when is_binary(bytes) do
-    options = Keyword.validate!(options, [:format, parse_metadata: true, page: 0, orient: false])
+    options =
+      Keyword.validate!(options, [
+        :format,
+        parse_metadata: true,
+        page: 0,
+        orient: false,
+        max_pixels: Image.default_max_pixels()
+      ])
+
+    options = Keyword.put(options, :native_max_pixels, Image.native_max_pixels(options[:max_pixels]))
     validate_option!(options, :parse_metadata, &is_boolean/1, "a boolean")
     validate_option!(options, :orient, &is_boolean/1, "a boolean")
     validate_option!(options, :page, &(is_integer(&1) and &1 >= 0), "a non-negative integer")
@@ -71,41 +82,56 @@ defmodule Imagex do
   end
 
   defp decode_format(:jpeg, bytes, options) do
-    with {:ok, image} <- Image.from_native(Imagex.C.jpeg_decompress(bytes), false) do
+    with {:ok, image} <- Image.from_native(Imagex.C.jpeg_decompress(bytes, options[:native_max_pixels]), false) do
       metadata = if options[:parse_metadata], do: Imagex.Jfif.read_metadata_from_jpeg(bytes)
       {:ok, %{image | metadata: metadata}}
     end
   end
 
   defp decode_format(:png, bytes, options),
-    do: Image.from_native(Imagex.C.png_decompress(bytes), options[:parse_metadata])
+    do: Image.from_native(Imagex.C.png_decompress(bytes, options[:native_max_pixels]), options[:parse_metadata])
 
   # libjxl applies the codestream orientation, so the pixels are already upright.
   defp decode_format(:jxl, bytes, options) do
-    with {:ok, image} <- Image.from_native(Imagex.C.jxl_decompress(bytes), options[:parse_metadata]) do
+    with {:ok, image} <-
+           Image.from_native(Imagex.C.jxl_decompress(bytes, options[:native_max_pixels]), options[:parse_metadata]) do
       {:ok, upright(image)}
     end
   end
 
   defp decode_format(:webp, bytes, options) do
-    with {:ok, image} <- Image.from_native(Imagex.C.webp_decompress(bytes), false),
+    with {:ok, image} <- Image.from_native(Imagex.C.webp_decompress(bytes, options[:native_max_pixels]), false),
          {:ok, metadata} <- Imagex.Webp.read_metadata(bytes, options[:parse_metadata]) do
       {:ok, %{image | metadata: metadata}}
     end
   end
 
-  defp decode_format(:ppm, bytes, _options), do: Imagex.PPM.decode(bytes)
-  defp decode_format(:bmp, bytes, _options), do: Imagex.BMP.decode(bytes)
+  # These decode in Elixir, so their memory is bounded by the input; max_pixels is checked for consistency.
+  defp decode_format(:ppm, bytes, options),
+    do: bytes |> Imagex.PPM.decode() |> check_max_pixels(options[:native_max_pixels])
+
+  defp decode_format(:bmp, bytes, options),
+    do: bytes |> Imagex.BMP.decode() |> check_max_pixels(options[:native_max_pixels])
 
   defp decode_format(:tiff, bytes, options) do
     with {:ok, document} <- Imagex.Tiff.load(bytes) do
-      Imagex.Tiff.render_page(document, options[:page])
+      Imagex.Tiff.render_page(document, options[:page], max_pixels: options[:max_pixels])
     end
   end
 
   defp decode_format(:pdf, _bytes, _options), do: {:error, "PDF documents must be loaded with Imagex.Pdf.load/1"}
   defp decode_format(nil, _bytes, _options), do: {:error, "unrecognized image format"}
   defp decode_format(format, _bytes, _options), do: raise(ArgumentError, "unsupported format: #{inspect(format)}")
+
+  defp check_max_pixels({:ok, %Image{tensor: tensor}} = result, max_pixels) do
+    {h, w, _c} = dimensions(tensor)
+
+    if max_pixels != 0 and h * w > max_pixels,
+      do: {:error, "image has more pixels than max_pixels allows"},
+      else: result
+  end
+
+  defp check_max_pixels(error, _max_pixels), do: error
 
   defp orient(%Image{metadata: %{exif: %{ifd0: %{orientation: orientation}}}} = image) do
     transposed = if tuple_size(image.tensor.shape) == 2, do: [1, 0], else: [1, 0, 2]

@@ -1021,6 +1021,41 @@ defmodule ImagexTest do
       refute Map.has_key?(metadata, :exif) or Map.has_key?(metadata, :xmp)
     end
 
+    test "images larger than max_pixels return an error before decoding", %{image: image} do
+      # an 8x8 JPEG whose header claims 65500x21858 pixels (about 4 GB of RGB)
+      {:ok, jpeg} = Imagex.encode(Nx.broadcast(Nx.tensor(128, type: {:u, 8}), {8, 8, 3}), :jpeg)
+      [{sof, _}] = :binary.matches(jpeg, <<0xFF, 0xC0>>)
+      <<before::binary-size(sof + 5), _height::16, _width::16, rest::binary>> = jpeg
+
+      assert {:error, "image has more pixels than max_pixels allows"} =
+               Imagex.decode(<<before::binary, 21858::16, 65500::16, rest::binary>>)
+
+      for format <- [:png, :jxl, :webp, :ppm, :bmp] do
+        {:ok, bytes} = Imagex.encode(image, format)
+        assert {:error, "image has more pixels than max_pixels allows"} = Imagex.decode(bytes, max_pixels: 1000)
+        assert {:ok, _} = Imagex.decode(bytes, max_pixels: :infinity)
+      end
+
+      {:ok, tiff} = Imagex.Tiff.load(File.read!("test/assets/lena.tiff"))
+      assert {:error, _} = Imagex.Tiff.render_page(tiff, 0, max_pixels: 1000)
+      assert {:error, _} = Imagex.open("test/assets/lena.tiff", max_pixels: 1000)
+      assert {:ok, _} = Imagex.open("test/assets/lena.tiff", max_pixels: :infinity)
+
+      # a 0.9 x 1000 point page must not round down to zero pixels
+      thin_page =
+        "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" <>
+          "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 0.9 1000]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+
+      {:ok, thin} = Imagex.Pdf.load(thin_page)
+      assert {:error, _} = Imagex.Pdf.render_page(thin, 0, max_pixels: 1)
+      assert {:ok, _} = Imagex.Pdf.render_page(thin, 0)
+
+      {:ok, pdf} = Imagex.Pdf.load(File.read!("test/assets/lena.pdf"))
+      assert {:error, _} = Imagex.Pdf.render_page(pdf, 0, dpi: 100_000)
+
+      assert_raise ArgumentError, fn -> Imagex.decode(<<>>, max_pixels: 0) end
+    end
+
     test "invalid JFIF density metadata returns an error", %{image: image} do
       image = %{image | metadata: %{jfif: %{density_units: 1, density_x: 0, density_y: 72}}}
       assert {:error, "invalid JFIF density" <> _} = Imagex.encode(image, :jpeg)
