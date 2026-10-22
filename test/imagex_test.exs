@@ -41,6 +41,13 @@ defmodule ImagexTest do
       assert encoded_metadata.exif == metadata.exif
     end
 
+    test "encode grayscale image" do
+      tensor = Nx.iota({8, 8}, type: {:u, 8})
+      {:ok, bytes} = Imagex.encode(tensor, :jpeg)
+      {:ok, %Image{} = image} = Imagex.decode(bytes)
+      assert image.tensor.shape == {8, 8}
+    end
+
     test "encode image preserves JFIF density" do
       {:ok, image} = Imagex.open("test/assets/exif/exif-org/olympus-d320l.jpg")
       {:ok, bytes} = Imagex.encode(image, :jpeg)
