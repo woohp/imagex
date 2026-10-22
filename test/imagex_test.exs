@@ -874,7 +874,7 @@ defmodule ImagexTest do
     end
 
     test "TIFF pages decode upright, including transposed orientations" do
-      for orientation <- [2, 6, 7] do
+      for orientation <- 2..8 do
         {:ok, image} = Imagex.open("test/assets/tiff/orientation-#{orientation}.tif")
         gray = image.tensor[[.., .., 0]]
         assert {gray.shape, Nx.to_flat_list(gray)} == @oriented[orientation]
