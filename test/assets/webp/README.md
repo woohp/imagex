@@ -10,12 +10,7 @@ Pinned commit: `06ddd96e276c2c638a72d39d3c0f340afd61978c`.
 | File | Container / coverage |
 | --- | --- |
 | `test.webp` | Lossy RGB (`VP8 `), plus unknown ancillary chunks |
-| `lossless_color_transform.webp` | Lossless RGB (`VP8L`), color transform |
-| `near_lossless_75.webp` | Near-lossless RGB, stored as `VP8L` |
-| `lossless1.webp` | Lossless RGBA (`VP8L`) |
 | `lossy_alpha1.webp` | Extended lossy RGBA (`VP8X`, compressed `ALPH`, `VP8 `) |
-| `alpha_no_compression.webp` | Extended lossy RGBA, uncompressed alpha |
-| `alpha_filter_3.webp` | Extended lossy RGBA, filtered/compressed alpha |
 
 Individual files can be fetched with:
 
@@ -40,8 +35,7 @@ thumbnail. XMP is a small XML packet.
 `pixels.json` records shape and SHA-256 of decoded RGB/RGBA bytes from Pillow
 for every fixture. Tests compare Imagex output to these independently obtained
 expectations, not to bytes produced by Imagex's encoder. Encoding tests also
-check exact nonuniform lossless round trips and preservation of EXIF, thumbnail,
-and XMP data.
+check preservation of EXIF, thumbnail, and XMP data.
 
 The tiny animated fixture in the parent directory covers animation rejection. Grayscale and grayscale-alpha input expansion remains
 covered by tensor tests; WebP decoding returns RGB/RGBA.

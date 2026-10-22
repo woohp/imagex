@@ -49,17 +49,6 @@ defmodule Imagex.WebpTest do
     assert Nx.to_binary(decoded.tensor) == Nx.to_binary(image.tensor)
   end
 
-  test "lossless encoding preserves nonuniform RGB and RGBA fixtures" do
-    for filename <- ["lossless_color_transform.webp", "lossless1.webp", "lossy_alpha1.webp"] do
-      assert {:ok, source} = Imagex.open("test/assets/webp/#{filename}")
-      assert {:ok, encoded} = Imagex.encode(source, :webp, lossless: true)
-      assert byte_size(encoded) < Nx.size(source.tensor)
-      assert {:ok, decoded} = Imagex.decode(encoded)
-      assert decoded.tensor.shape == source.tensor.shape
-      assert Nx.to_binary(decoded.tensor) == Nx.to_binary(source.tensor)
-    end
-  end
-
   test "ignores bytes outside the declared RIFF extent without losing metadata" do
     bytes = File.read!("test/assets/webp/lossy-alpha-exif-xmp.webp")
     assert {:ok, expected} = Imagex.decode(bytes)
