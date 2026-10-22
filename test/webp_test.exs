@@ -116,10 +116,10 @@ defmodule Imagex.WebpTest do
     end
   end
 
-  test "save and open use the WebP extension" do
+  @tag :tmp_dir
+  test "save and open use the WebP extension", %{tmp_dir: tmp_dir} do
     image = %Image{tensor: Nx.tensor([[[10, 20, 30]]], type: :u8)}
-    path = Path.join(System.tmp_dir!(), "imagex-webp-#{System.unique_integer([:positive])}.webp")
-    on_exit(fn -> File.rm!(path) end)
+    path = Path.join(tmp_dir, "image.webp")
     assert :ok = Imagex.save(image, path, lossless: true)
     assert {:ok, decoded} = Imagex.open(path)
     assert Nx.to_binary(decoded.tensor) == Nx.to_binary(image.tensor)
