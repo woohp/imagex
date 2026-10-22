@@ -919,15 +919,9 @@ expected<decompress_result_t, string_view> pdf_render_page(
     binary pixels = binary::from_bytes(image.data(), height * image.bytes_per_row());
     uint32_t channels = image.bytes_per_row() / width;
 
-    const auto format = image.format();
-    if (format == poppler::image::format_mono)
-        return std::unexpected("Mono images not supported right now");
-    else if (format == poppler::image::format_bgr24 || format == poppler::image::format_argb32)
-    {
-        // convert bgr to rgb
-        for (uint32_t i = 0; i < pixels.size; i += channels)
-            std::swap(pixels.data[i], pixels.data[i + 2]);
-    }
+    // The renderer's default format is argb32, which is BGRA in memory on little-endian hosts.
+    for (uint32_t i = 0; i < pixels.size; i += channels)
+        std::swap(pixels.data[i], pixels.data[i + 2]);
 
     return decompress_result_t{
         .pixels = std::move(pixels),
@@ -1092,12 +1086,6 @@ struct webp_writer_guard
 expected<binary, string_view> webp_compress(
     binary pixels, int width, int height, int channels, double quality, bool lossless, int effort)
 {
-    // Validate the raw pixel buffer before passing it to libwebp.
-    if (width <= 0 || height <= 0 || width > WEBP_MAX_DIMENSION || height > WEBP_MAX_DIMENSION)
-        return std::unexpected("invalid WebP dimensions");
-    if ((channels != 3 && channels != 4) || pixels.size != static_cast<size_t>(width) * height * channels)
-        return std::unexpected("invalid WebP pixel buffer");
-
     // Configure compression; exact preserves hidden RGB in transparent pixels.
     WebPConfig config;
     if (!WebPConfigInit(&config))
