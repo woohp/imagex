@@ -34,10 +34,7 @@ defmodule Imagex.WebpTest do
 
       assert {:ok, encoded} = Imagex.encode(image, :webp, lossless: true)
       assert {:ok, decoded} = Imagex.decode(encoded)
-      # Re-encoding relocates the thumbnail; its offset is not semantic metadata.
-      {_, decoded_exif} = pop_in(decoded.metadata.exif, [:ifd1, :jpeg_interchange_format])
-      {_, source_exif} = pop_in(image.metadata.exif, [:ifd1, :jpeg_interchange_format])
-      assert decoded_exif == source_exif
+      assert decoded.metadata.exif == image.metadata.exif
       assert Map.get(decoded.metadata, :xmp) == Map.get(image.metadata, :xmp)
       assert Nx.to_binary(decoded.tensor) == Nx.to_binary(image.tensor)
     end

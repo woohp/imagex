@@ -9,49 +9,33 @@ defmodule Imagex.Jfif do
   @jpeg_start_of_image 0xFFD8
   @jpeg_app1_xmp_identifier "http://ns.adobe.com/xap/1.0/\0"
 
-  def read_metadata_from_jpeg(bytes) when is_binary(bytes) do
-    case bytes do
-      <<@jpeg_start_of_image::16, rest::binary>> ->
-        read_metadata_from_jpeg_impl(rest, %{})
-
-      _ ->
-        nil
-    end
+  def read_metadata_from_jpeg(<<@jpeg_start_of_image::16, rest::binary>>) do
+    metadata = read_segments(rest, %{})
+    if metadata == %{}, do: nil, else: metadata
   end
 
-  defp read_metadata_from_jpeg_impl(<<>>, metadata), do: blank_to_nil(metadata)
+  def read_metadata_from_jpeg(_bytes), do: nil
 
-  defp read_metadata_from_jpeg_impl(<<0xFFE0::16, len::16-big, rest::binary>>, metadata) do
+  # Walk the marker segments up to the start of scan, skipping ones we don't parse.
+  defp read_segments(<<0xFF, 0xFF, rest::binary>>, metadata), do: read_segments(<<0xFF, rest::binary>>, metadata)
+
+  defp read_segments(<<0xFF, marker, len::16, rest::binary>>, metadata) when marker not in [0xD9, 0xDA] do
     payload_length = len - 2
 
     case rest do
       <<payload::binary-size(^payload_length), remaining::binary>> ->
-        case parse_jfif(payload) do
-          nil -> blank_to_nil(metadata)
-          app0_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app0_metadata))
-        end
+        read_segments(remaining, merge_metadata(metadata, parse_segment(marker, payload)))
 
       _ ->
-        blank_to_nil(metadata)
+        metadata
     end
   end
 
-  defp read_metadata_from_jpeg_impl(<<0xFFE1::16, len::16-big, rest::binary>>, metadata) do
-    payload_length = len - 2
+  defp read_segments(_bytes, metadata), do: metadata
 
-    case rest do
-      <<payload::binary-size(^payload_length), remaining::binary>> ->
-        case parse_app1(payload) do
-          nil -> blank_to_nil(metadata)
-          app1_metadata -> read_metadata_from_jpeg_impl(remaining, merge_metadata(metadata, app1_metadata))
-        end
-
-      _ ->
-        blank_to_nil(metadata)
-    end
-  end
-
-  defp read_metadata_from_jpeg_impl(_, metadata), do: blank_to_nil(metadata)
+  defp parse_segment(0xE0, payload), do: parse_jfif(payload)
+  defp parse_segment(0xE1, payload), do: parse_app1(payload)
+  defp parse_segment(_marker, _payload), do: nil
 
   defp parse_app1(<<"Exif", 0::16, app1_data::binary>>) do
     Imagex.Exif.read_exif_from_tiff(app1_data)
@@ -62,6 +46,8 @@ defmodule Imagex.Jfif do
   end
 
   defp parse_app1(_), do: nil
+
+  defp merge_metadata(metadata, nil), do: metadata
 
   defp merge_metadata(metadata, new_metadata) do
     cond do
@@ -74,9 +60,6 @@ defmodule Imagex.Jfif do
         Map.merge(metadata, new_metadata)
     end
   end
-
-  defp blank_to_nil(metadata) when metadata == %{}, do: nil
-  defp blank_to_nil(metadata), do: metadata
 
   defp parse_jfif(
          <<"JFIF\0"::binary, version_major::8, version_minor::8, density_units::8, density_x::16, density_y::16,
@@ -98,41 +81,26 @@ defmodule Imagex.Jfif do
     }
   end
 
-  defp parse_jfif(<<"JFXX\0"::binary, thumbnail_format::8, rest::binary>> = _app0_data) do
-    out =
-      case thumbnail_format do
-        0x10 ->
-          # TODO: doesn't seem to be quite working yet...
-          # thumbnail_data_size = byte_size(rest) - 4
-          %{thumbnail_format: thumbnail_format, thumbnail_data: :not_working_yet}
-
-        0x11 ->
-          <<thumbnail_width::8, thumbnail_height::8, thumbnail_palette::binary-size(768), thumbnail_data::binary>> =
-            rest
-
-          %{
-            thumbnail_format: thumbnail_format,
-            thumbnail_width: thumbnail_width,
-            thumbnail_height: thumbnail_height,
-            thumbnail_palette: thumbnail_palette,
-            thumbnail_data: thumbnail_data
-          }
-
-        0x12 ->
-          <<thumbnail_width::8, thumbnail_height::8, thumbnail_data::binary>> = rest
-
-          %{
-            thumbnail_format: thumbnail_format,
-            thumbnail_width: thumbnail_width,
-            thumbnail_height: thumbnail_height,
-            thumbnail_data: thumbnail_data
-          }
-      end
-
-    %{jfif: out}
+  # JFXX extension thumbnails: 0x10 is a complete JPEG stream, 0x11 is palettized, 0x12 is RGB.
+  defp parse_jfif(<<"JFXX\0", 0x10, thumbnail_data::binary>>) do
+    %{jfif: %{thumbnail_format: 0x10, thumbnail_data: thumbnail_data}}
   end
 
-  defp parse_jfif(_) do
-    nil
+  defp parse_jfif(<<"JFXX\0", 0x11, width, height, palette::binary-size(768), thumbnail_data::binary>>) do
+    %{
+      jfif: %{
+        thumbnail_format: 0x11,
+        thumbnail_width: width,
+        thumbnail_height: height,
+        thumbnail_palette: palette,
+        thumbnail_data: thumbnail_data
+      }
+    }
   end
+
+  defp parse_jfif(<<"JFXX\0", 0x12, width, height, thumbnail_data::binary>>) do
+    %{jfif: %{thumbnail_format: 0x12, thumbnail_width: width, thumbnail_height: height, thumbnail_data: thumbnail_data}}
+  end
+
+  defp parse_jfif(_app0_data), do: nil
 end

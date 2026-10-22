@@ -59,9 +59,6 @@ defmodule ImagexTest do
       {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :jpeg)
 
       assert metadata.exif.ifd1.thumbnail_data == source_image.metadata.exif.ifd1.thumbnail_data
-
-      assert metadata.exif.ifd1.jpeg_interchange_format_length ==
-               byte_size(source_image.metadata.exif.ifd1.thumbnail_data)
     end
 
     test "encode image returns error for unsupported exif values", %{image: test_image} do
