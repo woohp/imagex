@@ -41,6 +41,13 @@ defmodule ImagexTest do
       assert encoded_metadata.exif == metadata.exif
     end
 
+    test "encode image preserves JFIF density" do
+      {:ok, image} = Imagex.open("test/assets/exif/exif-org/olympus-d320l.jpg")
+      {:ok, bytes} = Imagex.encode(image, :jpeg)
+      {:ok, %Image{metadata: %{jfif: jfif}}} = Imagex.decode(bytes)
+      assert {jfif.density_units, jfif.density_x, jfif.density_y} == {1, 144, 144}
+    end
+
     test "encode image preserves xmp metadata", %{image: test_image} do
       xmp = sample_xmp("jpeg-xmp")
       image = %Image{tensor: test_image.tensor, metadata: %{xmp: xmp}}
@@ -165,22 +172,9 @@ defmodule ImagexTest do
       assert Nx.to_binary(image.tensor) == Nx.to_binary(test_image.tensor)
       assert image.tensor.shape == test_image.tensor.shape
 
-      %{png_chunks: [%{text: xmp_text}]} = image.metadata
-
-      assert image.metadata == %{
-               xmp: xmp_text,
-               png_chunks: [
-                 %{
-                   keyword: "XML:com.adobe.xmp",
-                   text: xmp_text,
-                   language_tag: "",
-                   translated_keyword: ""
-                 }
-               ]
-             }
-
+      assert %{xmp: xmp_text} = image.metadata
+      assert map_size(image.metadata) == 1
       assert xmp_text =~ "<x:xmpmeta"
-      assert image.metadata.xmp == xmp_text
     end
 
     test "decode image returns :error for bad input" do
@@ -265,6 +259,13 @@ defmodule ImagexTest do
              }
     end
 
+    test "encode image preserves decoded exif metadata" do
+      {:ok, image} = Imagex.open("test/assets/16bit.png")
+      {:ok, bytes} = Imagex.encode(image, :png)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(bytes)
+      assert metadata.exif == image.metadata.exif
+    end
+
     test "encode image writes metadata.xmp as a PNG XMP chunk", %{image: test_image} do
       xmp = sample_xmp("png-xmp")
       image = %Image{tensor: test_image.tensor, metadata: %{xmp: xmp}}
@@ -272,16 +273,8 @@ defmodule ImagexTest do
       {:ok, compressed_bytes} = Imagex.encode(image, :png)
       {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
 
-      assert metadata.xmp == xmp
-
-      assert metadata.png_chunks == [
-               %{
-                 keyword: "XML:com.adobe.xmp",
-                 text: xmp,
-                 language_tag: "",
-                 translated_keyword: ""
-               }
-             ]
+      assert metadata == %{xmp: xmp}
+      assert {:ok, _bytes} = Imagex.encode(%Image{tensor: test_image.tensor, metadata: metadata}, :png)
     end
 
     test "encode image rejects duplicate PNG XMP metadata", %{image: test_image} do
@@ -508,9 +501,8 @@ defmodule ImagexTest do
       assert image.metadata.exif.ifd0.x_resolution == {300, 1}
       assert image.metadata.exif.ifd0.y_resolution == {300, 1}
 
-      [%{type: :xml, contents: contents}] = image.metadata.jxl_boxes
-
-      assert image.metadata.xmp == contents
+      contents = image.metadata.xmp
+      refute Map.has_key?(image.metadata, :jxl_boxes)
       assert contents =~ "<dc:title>"
       assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
     end
@@ -553,7 +545,7 @@ defmodule ImagexTest do
       {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
 
       assert encoded_metadata.xmp == "<x:xmpmeta>Hello</x:xmpmeta>"
-      assert encoded_metadata.jxl_boxes == metadata.jxl_boxes
+      assert encoded_metadata.jxl_boxes == [%{type: :jumb, contents: <<1, 2, 3>>}]
     end
 
     test "encode image writes metadata.xmp as a JXL xml box", %{image: test_image} do
@@ -563,8 +555,8 @@ defmodule ImagexTest do
       {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
       {:ok, %Image{metadata: encoded_metadata}} = Imagex.decode(compressed_bytes, format: :jxl)
 
-      assert encoded_metadata.xmp == xmp
-      assert encoded_metadata.jxl_boxes == [%{type: :xml, contents: xmp}]
+      assert encoded_metadata == %{xmp: xmp}
+      assert {:ok, _bytes} = Imagex.encode(%Image{tensor: test_image.tensor, metadata: encoded_metadata}, :jxl)
     end
 
     test "encode image preserves metadata.xmp alongside non-xml JXL boxes", %{image: test_image} do
@@ -580,10 +572,7 @@ defmodule ImagexTest do
 
       assert encoded_metadata.xmp == xmp
 
-      assert encoded_metadata.jxl_boxes == [
-               %{type: :xml, contents: xmp},
-               %{type: :jumb, contents: <<1, 2, 3>>}
-             ]
+      assert encoded_metadata.jxl_boxes == [%{type: :jumb, contents: <<1, 2, 3>>}]
     end
 
     test "encode image returns error for malformed jxl metadata", %{image: test_image} do

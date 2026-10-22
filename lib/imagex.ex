@@ -36,8 +36,7 @@ defmodule Imagex do
 
   def encode(image, :webp, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, quality: 75, lossless: false, effort: 4, metadata: nil),
-         {:ok, exif} <- exif_binary_from_metadata(options[:metadata]),
-         {:ok, xmp} <- xmp_binary_from_metadata(options[:metadata]),
+         {:ok, metadata} <- encode_metadata(options[:metadata]),
          :ok <- Imagex.Webp.validate_options(options),
          {:ok, tensor} <- Imagex.Webp.prepare_tensor(image),
          {h, w, c} <- standardize_shape(tensor.shape),
@@ -51,7 +50,7 @@ defmodule Imagex do
              options[:lossless],
              options[:effort]
            ) do
-      Imagex.Webp.put_metadata(bytes, w, h, c == 4, exif, xmp)
+      Imagex.Webp.put_metadata(bytes, w, h, c == 4, metadata.exif, metadata[:xmp])
     end
   end
 
@@ -61,12 +60,11 @@ defmodule Imagex do
 
   def encode(image, :jpeg, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, quality: 75, metadata: nil),
-         {:ok, exif_binary} <- exif_binary_from_metadata(Keyword.get(options, :metadata)),
-         {:ok, xmp_binary} <- xmp_binary_from_metadata(Keyword.get(options, :metadata)) do
-      quality = Keyword.get(options, :quality)
+         {:ok, metadata} <- encode_metadata(options[:metadata]) do
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
-      Imagex.C.jpeg_compress(pixels, w, h, c, quality, exif_binary, xmp_binary)
+      density = jfif_density(metadata[:jfif])
+      Imagex.C.jpeg_compress(pixels, w, h, c, options[:quality], density, metadata.exif, metadata[:xmp])
     else
       error -> error
     end
@@ -78,11 +76,12 @@ defmodule Imagex do
 
   def encode(image, :png, options) when is_tensor(image) do
     with {:ok, options} <- Keyword.validate(options, metadata: nil),
-         {:ok, png_texts} <- Imagex.Png.texts_from_metadata(Keyword.get(options, :metadata)) do
+         {:ok, metadata} <- encode_metadata(options[:metadata]),
+         {:ok, png_texts} <- Imagex.Png.texts_from_metadata(metadata[:png_chunks], metadata[:xmp]) do
       pixels = Nx.to_binary(image)
       {h, w, c} = standardize_shape(image.shape)
       bit_depth = get_bit_depth(image)
-      Imagex.C.png_compress(pixels, w, h, c, bit_depth, png_texts)
+      Imagex.C.png_compress(pixels, w, h, c, bit_depth, metadata.exif, png_texts)
     else
       error -> error
     end
@@ -105,7 +104,8 @@ defmodule Imagex do
          bit_depth <- get_bit_depth(image),
          lossless <- Keyword.get(options, :lossless),
          {:ok, distance} <- parse_jxl_distance(Keyword.get(options, :distance), lossless),
-         {:ok, {exif_binary, jxl_boxes}} <- Imagex.Jxl.metadata_to_boxes(Keyword.get(options, :metadata)) do
+         {:ok, metadata} <- encode_metadata(Keyword.get(options, :metadata)),
+         {:ok, jxl_boxes} <- Imagex.Jxl.boxes_from_metadata(metadata[:jxl_boxes], metadata[:xmp]) do
       effort = Imagex.Jxl.parse_effort(Keyword.get(options, :effort))
 
       progressive =
@@ -131,7 +131,7 @@ defmodule Imagex do
         h,
         c,
         bit_depth,
-        exif_binary,
+        metadata.exif,
         jxl_boxes,
         distance,
         lossless,
@@ -245,20 +245,12 @@ defmodule Imagex do
        ) do
     metadata =
       if parse_metadata do
-        exif_data =
-          if is_binary(exif_binary) do
-            Imagex.Exif.read_exif_from_tiff(exif_binary)
-          else
-            %{}
-          end
+        metadata =
+          if(exif_binary, do: Imagex.Exif.read_exif_from_tiff(exif_binary), else: %{})
+          |> Map.merge(Imagex.Png.metadata_from_texts(png_texts))
+          |> Map.merge(Imagex.Jxl.metadata_from_boxes(xml_boxes, jumb_boxes))
 
-        png_data = Imagex.Png.metadata_from_texts(png_texts)
-        jxl_data = Imagex.Jxl.boxes_to_metadata({nil, xml_boxes, jumb_boxes}) || %{}
-
-        metadata = exif_data |> Map.merge(png_data) |> Map.merge(jxl_data)
-        if metadata == %{}, do: nil, else: metadata
-      else
-        nil
+        if metadata != %{}, do: metadata
       end
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
@@ -272,31 +264,27 @@ defmodule Imagex do
     output
   end
 
-  defp exif_binary_from_metadata(nil), do: {:ok, nil}
+  # Validates the metadata shared by all formats, encoding EXIF to its binary form.
+  defp encode_metadata(nil), do: {:ok, %{exif: nil}}
 
-  defp exif_binary_from_metadata(metadata) when is_map(metadata) do
-    case Map.get(metadata, :exif) do
-      nil -> {:ok, nil}
-      exif when is_map(exif) -> Imagex.Exif.encode_exif(exif)
-      exif -> {:error, "EXIF metadata must be a map, got: #{inspect(exif)}"}
+  defp encode_metadata(metadata) when is_map(metadata) do
+    xmp = Map.get(metadata, :xmp)
+
+    with {:ok, exif} <- encode_exif(Map.get(metadata, :exif)),
+         true <- (is_nil(xmp) or is_binary(xmp)) || {:error, "XMP metadata must be a binary, got: #{inspect(xmp)}"} do
+      {:ok, Map.put(metadata, :exif, exif)}
     end
   end
 
-  defp exif_binary_from_metadata(metadata),
+  defp encode_metadata(metadata),
     do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
 
-  defp xmp_binary_from_metadata(nil), do: {:ok, nil}
+  defp encode_exif(nil), do: {:ok, nil}
+  defp encode_exif(exif) when is_map(exif), do: Imagex.Exif.encode_exif(exif)
+  defp encode_exif(exif), do: {:error, "EXIF metadata must be a map, got: #{inspect(exif)}"}
 
-  defp xmp_binary_from_metadata(metadata) when is_map(metadata) do
-    case Map.get(metadata, :xmp) do
-      nil -> {:ok, nil}
-      xmp when is_binary(xmp) -> {:ok, xmp}
-      xmp -> {:error, "XMP metadata must be a binary, got: #{inspect(xmp)}"}
-    end
-  end
-
-  defp xmp_binary_from_metadata(metadata),
-    do: {:error, "image metadata must be a map or nil, got: #{inspect(metadata)}"}
+  defp jfif_density(%{density_units: units, density_x: x, density_y: y}), do: {units, x, y}
+  defp jfif_density(_jfif), do: nil
 
   defp parse_jxl_distance(0, false), do: {:error, "JXL distance 0 requires lossless: true"}
 
