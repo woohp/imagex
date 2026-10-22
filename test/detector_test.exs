@@ -37,6 +37,7 @@ defmodule DetectorTest do
 
   test "detect pdf" do
     assert Imagex.Detect.detect(load_bytes("test/assets/lena.pdf")) == :pdf
+    assert Imagex.Detect.detect("%PDF-2.0\r\n%\xE2\xE3") == :pdf
   end
 
   test "detect garbage" do
