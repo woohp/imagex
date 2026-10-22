@@ -263,14 +263,7 @@ defmodule Imagex do
 
     shape = if channels == 1, do: {height, width}, else: {height, width, channels}
 
-    type =
-      case bit_depth do
-        8 -> {:u, 8}
-        16 -> {:u, 16}
-        32 -> {:f, 32}
-      end
-
-    tensor = Nx.from_binary(pixels, type) |> Nx.reshape(shape)
+    tensor = Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)
     image = %Imagex.Image{tensor: tensor, metadata: metadata}
     {:ok, image}
   end

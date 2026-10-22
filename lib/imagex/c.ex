@@ -65,7 +65,7 @@ defmodule Imagex.C do
           integer(),
           integer(),
           binary() | nil,
-          list({atom(), binary()}) | nil,
+          list({binary(), binary()}) | nil,
           float(),
           boolean(),
           integer(),
