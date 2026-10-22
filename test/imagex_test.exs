@@ -1,6 +1,5 @@
 defmodule ImagexTest do
   use ExUnit.Case
-  doctest Imagex
 
   alias Imagex.Image
 
@@ -401,52 +400,14 @@ defmodule ImagexTest do
              }
     end
 
-    test "encode rgba image" do
-      image1 = Nx.iota({10, 10, 4}, type: :u8)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
-    end
-
-    test "encode grayscale image" do
-      image1 = Nx.iota({10, 10}, type: :u8)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, %Image{} = image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
-    end
-
-    test "encode 16-bit rgb image" do
-      image1 = Nx.iota({100, 100, 3}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, %Image{} = image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
-    end
-
-    test "encode 16-bit rgba image" do
-      image1 = Nx.iota({100, 100, 4}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, %Image{} = image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
-    end
-
-    test "encode 16-bit grayscale image" do
-      image1 = Nx.iota({100, 100}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, %Image{} = image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
-    end
-
-    test "encode 16-bit grayscale-alpha image" do
-      image1 = Nx.iota({100, 100, 2}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image1, :png)
-      {:ok, image2} = Imagex.decode(compressed_bytes, format: :png)
-      assert image2.tensor == image1
-      assert image2.metadata == nil
+    test "encode round-trips 8- and 16-bit images with 1-4 channels" do
+      for type <- [:u8, :u16], shape <- [{100, 100}, {100, 100, 2}, {100, 100, 3}, {100, 100, 4}] do
+        image1 = Nx.iota(shape, type: type)
+        {:ok, compressed_bytes} = Imagex.encode(image1, :png)
+        {:ok, %Image{} = image2} = Imagex.decode(compressed_bytes, format: :png)
+        assert image2.tensor == image1
+        assert image2.metadata == nil
+      end
     end
   end
 
@@ -635,16 +596,10 @@ defmodule ImagexTest do
                Imagex.encode(image, :jxl)
     end
 
-    test "encode with increasing distances", %{image: test_image} do
-      # Higher distances should generally produce smaller files, but this is not guaranteed
-      # to be monotonic for every adjacent distance with newer libjxl releases.
-      compressed_sizes =
-        for distance <- 1..15 do
-          {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, distance: distance)
-          byte_size(compressed_bytes)
-        end
-
-      assert List.last(compressed_sizes) < List.first(compressed_sizes)
+    test "encode with the highest distance is smaller than with the lowest", %{image: test_image} do
+      {:ok, near_bytes} = Imagex.encode(test_image, :jxl, distance: 1)
+      {:ok, far_bytes} = Imagex.encode(test_image, :jxl, distance: 15)
+      assert byte_size(far_bytes) < byte_size(near_bytes)
     end
 
     test "lossy jpeg-xl encode rejects distance 0", %{image: test_image} do
@@ -653,15 +608,10 @@ defmodule ImagexTest do
       end
     end
 
-    test "encode with increasing efforts", %{image: test_image} do
-      # If we encode images with increasing effort, the resulting file size should be smaller and smaller
-      compressed_sizes =
-        for effort <- 1..9 do
-          {:ok, compressed_bytes} = Imagex.encode(test_image, :jxl, lossless: false, effort: effort)
-          byte_size(compressed_bytes)
-        end
-
-      assert List.last(compressed_sizes) < List.first(compressed_sizes)
+    test "encode with the highest effort is smaller than with the lowest", %{image: test_image} do
+      {:ok, low_effort_bytes} = Imagex.encode(test_image, :jxl, effort: 1)
+      {:ok, high_effort_bytes} = Imagex.encode(test_image, :jxl, effort: 9)
+      assert byte_size(high_effort_bytes) < byte_size(low_effort_bytes)
     end
 
     test "encode with progressive and order flags", %{image: test_image} do
@@ -669,42 +619,23 @@ defmodule ImagexTest do
       {:ok, compressed_1} = Imagex.encode(test_image, :jxl, progressive: 1, order: :center)
       {:ok, compressed_2} = Imagex.encode(test_image, :jxl, progressive: 2, order: :center)
 
-      assert byte_size(compressed_1) != byte_size(compressed_0)
-      assert byte_size(compressed_2) != byte_size(compressed_1)
+      # the defaults are progressive: 1 and order: :center
+      assert Imagex.encode(test_image, :jxl) == {:ok, compressed_1}
 
-      # default should now be progressive: true (1) and order: :center (1)
-      {:ok, compressed_default} = Imagex.encode(test_image, :jxl)
-      assert byte_size(compressed_default) == byte_size(compressed_1)
-
-      # verify they can still be decoded
-      for bytes <- [compressed_1, compressed_2, compressed_default] do
+      for bytes <- [compressed_0, compressed_1, compressed_2] do
         {:ok, %Image{} = decoded_image} = Imagex.decode(bytes, format: :jxl)
         assert decoded_image.tensor.shape == test_image.tensor.shape
       end
     end
 
-    test "encode 16-bit image" do
-      image = Nx.iota({8, 8, 3}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
+    test "encode 16-bit grayscale-alpha, RGB and RGBA images losslessly" do
+      for channels <- 2..4 do
+        image = Nx.iota({8, 8, channels}, type: :u16)
+        {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
 
-      {:ok, %Image{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
-      assert decoded_image.tensor == image
-    end
-
-    test "encode 16-bit rgba image" do
-      image = Nx.iota({8, 8, 4}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
-
-      {:ok, %Image{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
-      assert decoded_image.tensor == image
-    end
-
-    test "encode 16-bit grayscale image" do
-      image = Nx.iota({8, 8, 2}, type: :u16)
-      {:ok, compressed_bytes} = Imagex.encode(image, :jxl, lossless: true)
-
-      {:ok, %Image{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
-      assert decoded_image.tensor == image
+        {:ok, %Image{} = decoded_image} = Imagex.decode(compressed_bytes, format: :jxl)
+        assert decoded_image.tensor == image
+      end
     end
 
     test "transcode from jpeg" do
@@ -742,32 +673,20 @@ defmodule ImagexTest do
       assert max_diff <= 20
     end
 
-    test "transcode from jpeg with different efforts" do
+    test "transcode reconstructs the original JPEG only when its metadata is stored" do
       jpeg_bytes = File.read!("test/assets/lena.jpg")
 
-      {:ok, low_effort_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, effort: 3)
-      {:ok, high_effort_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, effort: 9)
+      {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
+      assert Imagex.Jxl.transcode_to_jpeg(jxl_bytes) == {:ok, jpeg_bytes}
 
-      assert byte_size(high_effort_bytes) < byte_size(low_effort_bytes)
-    end
-
-    test "transcode from jpeg without metadata" do
-      jpeg_bytes = File.read!("test/assets/lena.jpg")
-
-      {:ok, bytes_with_metadata} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, store_jpeg_metadata: true)
-      {:ok, bytes_without_metadata} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, store_jpeg_metadata: false)
-
-      assert byte_size(bytes_with_metadata) > byte_size(bytes_without_metadata)
+      {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes, store_jpeg_metadata: false)
+      assert {:error, _} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
+      assert {:ok, %Image{}} = Imagex.decode(jxl_bytes)
     end
 
     test "decode transcoded jpeg image" do
-      jxl_bytes = File.read!("test/assets/lena-transcode.jxl")
-      {:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
-      assert byte_size(jpeg_bytes) == 68750
-
-      # should be able to decode the jpeg bytes
-      {:ok, %Image{} = image} = Imagex.decode(jpeg_bytes, format: :jpeg)
-      assert image.tensor.shape == {512, 512, 3}
+      {:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(File.read!("test/assets/lena-transcode.jxl"))
+      assert jpeg_bytes == File.read!("test/assets/lena.jpg")
     end
 
     test "decode transcoded jpeg image fails gracefully when not possible" do

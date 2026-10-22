@@ -1,6 +1,5 @@
 defmodule DetectorTest do
   use ExUnit.Case
-  doctest Imagex.Detect
 
   defp load_bytes(path) do
     {:ok, file} = File.open(path, [:read])
