@@ -12,8 +12,6 @@ defmodule Imagex.Image do
   @enforce_keys [:tensor]
   defstruct [:tensor, :metadata]
 
-  @dialyzer {:nowarn_function, from_native: 2}
-
   # Pillow's limit: decoding anything larger from untrusted input is more likely an attack than a photo.
   @default_max_pixels 178_956_970
 

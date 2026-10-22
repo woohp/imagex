@@ -5,10 +5,6 @@ defmodule Imagex.Jxl do
   A JPEG transcoded to JXL is typically about 20% smaller and can be reconstructed bit-for-bit.
   """
 
-  # Suppress dialyzer warnings for functions that call NIFs
-  @dialyzer {:nowarn_function, transcode_from_jpeg: 2}
-  @dialyzer {:nowarn_function, transcode_to_jpeg: 1}
-
   @doc """
   Transcodes JPEG bytes to JXL without decoding the pixels.
 

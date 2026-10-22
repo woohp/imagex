@@ -27,9 +27,6 @@ defmodule Imagex do
   @type format :: :jpeg | :png | :jxl | :webp | :ppm | :bmp | :tiff | :pdf
   @type colorspace :: :L | :LA | :RGB | :RGBA
 
-  @dialyzer {:nowarn_function, encode: 3}
-  @dialyzer {:nowarn_function, decode_format: 3}
-
   @doc """
   Reads and decodes an image file. Accepts the same options as `decode/2`.
   """
