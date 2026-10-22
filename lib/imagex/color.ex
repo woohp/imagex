@@ -1,9 +1,5 @@
 defmodule Imagex.Color do
-  @moduledoc """
-  Provides functions for colorspace conversion using Nx tensors.
-  """
-
-  @type colorspace :: :L | :LA | :RGB | :RGBA
+  @moduledoc false
 
   @doc """
   Converts a tensor from one colorspace to another. Grayscale output has shape `{height, width}`.

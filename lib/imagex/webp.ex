@@ -2,45 +2,6 @@ defmodule Imagex.Webp do
   @moduledoc false
   import Bitwise
 
-  def prepare_tensor(%Nx.Tensor{type: {:u, 8}, shape: shape} = tensor) do
-    case shape do
-      {h, w} ->
-        prepare_tensor(Nx.reshape(tensor, {h, w, 1}))
-
-      {_, _, 1} ->
-        {:ok, Nx.concatenate([tensor, tensor, tensor], axis: 2)}
-
-      {_, _, 2} ->
-        gray = Nx.slice_along_axis(tensor, 0, 1, axis: 2)
-        alpha = Nx.slice_along_axis(tensor, 1, 1, axis: 2)
-        {:ok, Nx.concatenate([gray, gray, gray, alpha], axis: 2)}
-
-      {_, _, c} when c in [3, 4] ->
-        {:ok, tensor}
-
-      _ ->
-        {:error, "WebP requires 1–4 image channels"}
-    end
-  end
-
-  def prepare_tensor(_), do: {:error, "WebP requires unsigned 8-bit pixels"}
-
-  def validate_options(options) do
-    cond do
-      not is_number(options[:quality]) or options[:quality] < 0 or options[:quality] > 100 ->
-        {:error, "WebP quality must be between 0 and 100"}
-
-      not is_boolean(options[:lossless]) ->
-        {:error, "WebP lossless must be a boolean"}
-
-      not is_integer(options[:effort]) or options[:effort] not in 0..6 ->
-        {:error, "WebP effort must be an integer between 0 and 6"}
-
-      true ->
-        :ok
-    end
-  end
-
   def put_metadata(bytes, _w, _h, _alpha, nil, nil), do: {:ok, bytes}
 
   def put_metadata(bytes, w, h, alpha, exif, xmp) do

@@ -1,10 +1,8 @@
 defmodule Imagex.Jfif do
-  @moduledoc """
-  Provides functions for reading JFIF APP0 tags.
+  @moduledoc false
 
-  Reference:
-  https://metacpan.org/dist/Image-MetaData-JPEG/view/lib/Image/MetaData/JPEG/Structures.pod#Structure-of-a-JFIF-APP0-segment
-  """
+  # Reference:
+  # https://metacpan.org/dist/Image-MetaData-JPEG/view/lib/Image/MetaData/JPEG/Structures.pod#Structure-of-a-JFIF-APP0-segment
 
   @jpeg_start_of_image 0xFFD8
   @jpeg_app1_xmp_identifier "http://ns.adobe.com/xap/1.0/\0"

@@ -17,7 +17,7 @@ defmodule ImagexTest do
       assert image.tensor.shape == {512, 512, 3}
     end
 
-    test "encode image raises exception for bad input" do
+    test "decode returns an error for bad input" do
       {:error, error_reason} = Imagex.decode(<<0, 1, 2>>, format: :jpeg)
       assert String.starts_with?(error_reason, "Not a JPEG file")
     end
@@ -88,13 +88,12 @@ defmodule ImagexTest do
       assert {:error, "EXIF metadata must be a map, got: :bad_metadata"} = Imagex.encode(image, :jpeg)
     end
 
-    @tag :skip
     test "decode rgb image without parsing exif data" do
       jpeg_bytes = File.read!("test/assets/lena.jpg")
       {:ok, %Image{} = image} = Imagex.decode(jpeg_bytes, format: :jpeg, parse_metadata: false)
       assert image.tensor.type == {:u, 8}
       assert image.tensor.shape == {512, 512, 3}
-      assert is_binary(image.metadata)
+      assert image.metadata == nil
     end
   end
 
@@ -621,8 +620,9 @@ defmodule ImagexTest do
     end
 
     test "lossy jpeg-xl encode rejects distance 0", %{image: test_image} do
-      assert {:error, "JXL distance 0 requires lossless: true"} =
-               Imagex.encode(test_image, :jxl, lossless: false, distance: 0)
+      assert_raise ArgumentError, "JXL distance 0 requires lossless: true", fn ->
+        Imagex.encode(test_image, :jxl, lossless: false, distance: 0)
+      end
     end
 
     test "encode with increasing efforts", %{image: test_image} do
@@ -824,7 +824,7 @@ defmodule ImagexTest do
     assert image.tensor.shape == {512, 512, 3}
     assert image.metadata == nil
 
-    assert Imagex.decode(<<0, 1, 2>>) == {:error, "failed to decode"}
+    assert Imagex.decode(<<0, 1, 2>>) == {:error, "unrecognized image format"}
   end
 
   test "open from path directly" do
@@ -834,8 +834,11 @@ defmodule ImagexTest do
 
   test "load and render pdf document" do
     bytes = File.read!("test/assets/lena.pdf")
-    {:ok, %Imagex.Pdf{} = pdf} = Imagex.decode(bytes, format: :pdf)
+    assert {:error, "PDF documents must be loaded with Imagex.Pdf.load/1"} = Imagex.decode(bytes)
+
+    {:ok, %Imagex.Pdf{} = pdf} = Imagex.Pdf.load(bytes)
     assert pdf.num_pages == 1
+    assert {:error, "page index out of range"} = Imagex.Pdf.render_page(pdf, 1)
 
     {:ok, %Image{} = image} = Imagex.Pdf.render_page(pdf, 0)
     assert image.tensor.shape == {512, 512, 4}
@@ -845,13 +848,119 @@ defmodule ImagexTest do
     assert image.tensor.shape == {1024, 1024, 4}
   end
 
-  test "load and render tiff document" do
+  test "decode tiff as its first page" do
     bytes = File.read!("test/assets/lena.tiff")
-    {:ok, %Imagex.Tiff{} = tiff} = Imagex.decode(bytes, format: :tiff)
+    {:ok, %Image{} = image} = Imagex.decode(bytes)
+    assert image.tensor.shape == {512, 512, 4}
+
+    assert {:error, "page index out of range"} = Imagex.decode(bytes, page: 1)
+  end
+
+  test "renders pages of one TIFF document concurrently" do
+    {:ok, tiff} = Imagex.Tiff.load(File.read!("test/assets/lena.tiff"))
+    {:ok, expected} = Imagex.Tiff.render_page(tiff, 0)
+
+    results =
+      1..32
+      |> Task.async_stream(fn _ -> Imagex.Tiff.render_page(tiff, 0) end, max_concurrency: 16)
+      |> Enum.map(fn {:ok, {:ok, image}} -> image.tensor end)
+
+    assert Enum.all?(results, &(&1 == expected.tensor))
+  end
+
+  test "load and render tiff document" do
+    {:ok, %Imagex.Tiff{} = tiff} = Imagex.Tiff.load(File.read!("test/assets/lena.tiff"))
     assert tiff.num_pages == 1
 
     {:ok, %Image{} = image} = Imagex.Tiff.render_page(tiff, 0)
     assert image.tensor.shape == {512, 512, 4}
+    assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, -1)
+  end
+
+  describe "api" do
+    @describetag :tmp_dir
+
+    test "save accepts a tensor and infers the format from the extension", %{image: image, tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "image.PNG")
+      assert :ok = Imagex.save(image.tensor, path)
+      assert {:ok, %Image{tensor: tensor}} = Imagex.open(path)
+      assert tensor == image.tensor
+    end
+
+    test "save takes an explicit format", %{image: image, tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "image")
+      assert :ok = Imagex.save(image, path, format: :jxl, lossless: true)
+      assert {:ok, %Image{}} = Imagex.decode(File.read!(path), format: :jxl)
+    end
+
+    test "save raises for an unknown extension", %{image: image, tmp_dir: tmp_dir} do
+      assert_raise ArgumentError, ~r/extension ".gif"/, fn -> Imagex.save(image, Path.join(tmp_dir, "a.gif")) end
+    end
+
+    test "open returns a string error for a missing file" do
+      assert {:error, "missing.png: no such file or directory"} = Imagex.open("missing.png")
+    end
+
+    test "metadata option overrides the image's metadata, and nil strips it", %{image: image} do
+      image = %{image | metadata: %{xmp: "<from-struct/>"}}
+
+      for {options, expected} <- [
+            {[], %{xmp: "<from-struct/>"}},
+            {[metadata: %{xmp: "<from-option/>"}], %{xmp: "<from-option/>"}},
+            {[metadata: nil], nil}
+          ] do
+        {:ok, bytes} = Imagex.encode(image, :png, options)
+        assert {:ok, %Image{metadata: ^expected}} = Imagex.decode(bytes)
+      end
+    end
+
+    test "formats without metadata accept and ignore it", %{image: image} do
+      image = %{image | metadata: %{xmp: "<x/>"}}
+      assert {:ok, _} = Imagex.encode(image, :ppm)
+      assert {:ok, _} = Imagex.encode(image, :bmp, metadata: nil)
+    end
+
+    test "invalid arguments raise", %{image: image} do
+      assert_raise ArgumentError, fn -> Imagex.encode(image, :gif) end
+      assert_raise ArgumentError, fn -> Imagex.encode(image, :tiff) end
+      assert_raise ArgumentError, fn -> Imagex.encode(image, :jpeg, bogus: 1) end
+      assert_raise ArgumentError, fn -> Imagex.encode(image, :jpeg, quality: 500) end
+      assert_raise ArgumentError, fn -> Imagex.encode(image, :jxl, effort: :tortoise) end
+      assert_raise ArgumentError, fn -> Imagex.decode(<<>>, format: :gif) end
+      assert_raise ArgumentError, fn -> Imagex.decode(<<>>, bogus: 1) end
+      assert_raise ArgumentError, fn -> Imagex.decode(<<>>, orient: :yes) end
+      assert_raise ArgumentError, fn -> Imagex.decode(<<>>, page: -1) end
+
+      {:ok, pdf} = Imagex.Pdf.load(File.read!("test/assets/lena.pdf"))
+      assert_raise ArgumentError, fn -> Imagex.Pdf.render_page(pdf, 0, dpi: 0) end
+    end
+
+    test "metadata too large for a JPEG segment is dropped", %{image: image} do
+      large = :binary.copy("x", 70_000)
+      image = %{image | metadata: %{exif: %{ifd0: %{exif: %{maker_note: large}}}, xmp: large}}
+
+      {:ok, bytes} = Imagex.encode(image, :jpeg)
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(bytes)
+      refute Map.has_key?(metadata, :exif) or Map.has_key?(metadata, :xmp)
+    end
+
+    test "invalid JFIF density metadata returns an error", %{image: image} do
+      image = %{image | metadata: %{jfif: %{density_units: 1, density_x: 0, density_y: 72}}}
+      assert {:error, "invalid JFIF density" <> _} = Imagex.encode(image, :jpeg)
+    end
+
+    test "pixels a codec cannot store return an error", %{image: image} do
+      assert {:error, "JPEG cannot encode 3-channel u16 pixels"} =
+               Imagex.encode(Nx.as_type(image.tensor, {:u, 16}), :jpeg)
+
+      assert {:error, "PNG cannot encode 3-channel f32 pixels"} =
+               Imagex.encode(Nx.as_type(image.tensor, {:f, 32}), :png)
+    end
+
+    test "convert returns the kind of value it was given", %{image: image} do
+      assert %Nx.Tensor{shape: {512, 512}} = Imagex.convert(image.tensor, :L)
+      assert %Image{tensor: %Nx.Tensor{shape: {512, 512, 4}}} = Imagex.convert(image, :RGBA)
+    end
   end
 
   defp png_with_ztxt(keyword, text) do

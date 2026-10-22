@@ -1,28 +1,37 @@
 defmodule Imagex.Tiff do
+  @moduledoc """
+  Loads multi-page TIFF documents and renders their pages as images.
+
+  `Imagex.decode/2` already decodes a single TIFF page (the first, or the one given by `page:`);
+  use this module to inspect the page count or render several pages from one load.
+
+      {:ok, document} = Imagex.Tiff.load(File.read!("scan.tiff"))
+      {:ok, image} = Imagex.Tiff.render_page(document, document.num_pages - 1)
+  """
+
   @enforce_keys [:ref, :num_pages]
   defstruct [:ref, :num_pages]
 
-  @type t :: %__MODULE__{ref: reference(), num_pages: integer()}
+  @type t :: %__MODULE__{ref: reference(), num_pages: pos_integer()}
 
-  @spec render_page(t(), integer()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
-  def render_page(%Imagex.Tiff{ref: ref, num_pages: num_pages}, page_idx)
-      when page_idx >= 0 and page_idx < num_pages do
-    case Imagex.C.tiff_render_page(ref, page_idx) do
-      {:ok, {pixels, width, height, channels, bit_depth, _exif_data, _png_texts, _xml_boxes, _jumb_boxes}} ->
-        shape = if channels == 1, do: {height, width}, else: {height, width, channels}
-        tensor = Nx.from_binary(pixels, {:u, bit_depth}) |> Nx.reshape(shape)
-        {:ok, %Imagex.Image{tensor: tensor}}
+  @dialyzer {:nowarn_function, load: 1}
+  @dialyzer {:nowarn_function, render_page: 2}
 
-      error ->
-        error
+  @doc "Loads a TIFF document from its bytes."
+  @spec load(binary()) :: {:ok, t()} | {:error, String.t()}
+  def load(bytes) when is_binary(bytes) do
+    with {:ok, {ref, num_pages}} <- Imagex.C.tiff_load_document(bytes) do
+      {:ok, %__MODULE__{ref: ref, num_pages: num_pages}}
     end
   end
 
-  def render_page(_, page_idx) when page_idx < 0 do
-    {:error, "page index must be non-negative"}
-  end
-
-  def render_page(%Imagex.Tiff{num_pages: num_pages}, page_idx) when page_idx >= num_pages do
-    {:error, "page index out of bounds"}
+  @doc "Renders a zero-indexed page as an 8-bit RGBA image."
+  @spec render_page(t(), non_neg_integer()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
+  def render_page(%__MODULE__{ref: ref, num_pages: num_pages}, page_idx) do
+    if is_integer(page_idx) and page_idx in 0..(num_pages - 1)//1 do
+      Imagex.Image.from_native(Imagex.C.tiff_render_page(ref, page_idx), false)
+    else
+      {:error, "page index out of range"}
+    end
   end
 end
