@@ -47,24 +47,18 @@ defmodule Imagex.Jfif do
 
   defp merge_metadata(metadata, nil), do: metadata
 
+  # JFIF and JFXX segments both fill in metadata.jfif.
   defp merge_metadata(metadata, new_metadata) do
-    cond do
-      Map.has_key?(metadata, :jfif) and Map.has_key?(new_metadata, :jfif) ->
-        {jfif1, metadata} = Map.pop(metadata, :jfif)
-        {jfif2, new_metadata} = Map.pop(new_metadata, :jfif)
-        Map.merge(Map.merge(metadata, new_metadata), %{jfif: Map.merge(jfif1, jfif2)})
-
-      true ->
-        Map.merge(metadata, new_metadata)
-    end
+    Map.merge(metadata, new_metadata, fn
+      :jfif, jfif1, jfif2 -> Map.merge(jfif1, jfif2)
+      _key, _value1, value2 -> value2
+    end)
   end
 
   defp parse_jfif(
          <<"JFIF\0"::binary, version_major::8, version_minor::8, density_units::8, density_x::16, density_y::16,
            thumbnail_width::8, thumbnail_height::8, thumbnail_data::binary>> = _app0_data
        ) do
-    # TODO: should we validate whether the size of thumbnail_data = thumbnail_width * thumbnail_height * 3?
-
     %{
       jfif: %{
         version_major: version_major,

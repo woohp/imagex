@@ -1,5 +1,4 @@
 #include "expp.hpp"
-#include <array>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -19,7 +18,6 @@
 #include <poppler/cpp/poppler-document.h>
 #include <poppler/cpp/poppler-page-renderer.h>
 #include <poppler/cpp/poppler-page.h>
-#include <poppler/cpp/poppler-version.h>
 #include <sstream>
 #include <stdio.h>
 #include <tiffio.h>
@@ -918,9 +916,7 @@ expected<decompress_result_t, string_view> pdf_render_page(
     uint32_t channels = image.bytes_per_row() / width;
 
     const auto format = image.format();
-    if (format == poppler::image::format_invalid)
-        return std::unexpected("Invalid image format");
-    else if (format == poppler::image::format_mono)
+    if (format == poppler::image::format_mono)
         return std::unexpected("Mono images not supported right now");
     else if (format == poppler::image::format_bgr24 || format == poppler::image::format_argb32)
     {
