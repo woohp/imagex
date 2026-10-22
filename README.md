@@ -43,39 +43,63 @@ bytes = File.read!("lena.png")
 {:ok, image} = Imagex.decode(bytes, format: :png)
 ```
 
-Save an image as a file
+Save an image (an `Imagex.Image` or a tensor) as a file
 
 ```elixir
 image = Nx.tensor(...)
-Imagex.save(image, "foo.png")  # the format is inferred from the file extension
+:ok = Imagex.save(image, "foo.png")  # the format is inferred from the file extension
+:ok = Imagex.save(image, "foo", format: :jxl, lossless: true)
 ```
 
 or save to memory
 
 ```elixir
-compressed = Imagex.encode(image, :jpeg)
+{:ok, compressed} = Imagex.encode(image, :jpeg, quality: 90)
 ```
 
-WebP encoding accepts unsigned 8-bit tensors with 1–4 channels; grayscale inputs
-expand to RGB/RGBA. Options are `quality` (0–100, default 75), `lossless`
-(default false), and `effort` (0–6, default 4). In lossless mode, quality controls
-compression effort rather than pixel fidelity. Animated WebP is rejected, and
-ICC color management is not supported.
+See `Imagex.encode/3` for each format's options and accepted pixel types. Animated WebP is rejected,
+and ICC color management is not supported.
+
+Grayscale images are `{height, width}` tensors; other images are `{height, width, channels}`.
+TIFF pages are always decoded as 8-bit RGBA.
+Convert between grayscale, RGB and their alpha variants with `Imagex.convert/2`:
+
+```elixir
+gray = Imagex.convert(image, :L)
+```
+
+### Orientation
+
+Phone photos are usually stored sideways with an EXIF orientation tag. Pass `orient: true` to get
+upright pixels; the tag is then reset to 1 so re-encoding doesn't rotate the image again.
+
+```elixir
+{:ok, image} = Imagex.open("photo.jpg", orient: true)
+```
+
+JXL and TIFF pixels are always decoded upright.
+
+### Errors
+
+Invalid arguments (an unknown format or option, an out-of-range option value, a file extension with
+no known format) raise `ArgumentError`. Failures that depend on the data, such as corrupt files,
+pixels or metadata a format cannot store, or I/O errors, return `{:error, reason}` with a string reason.
 
 ## Metadata
 
 `Imagex.decode/2` returns `%Imagex.Image{metadata: ...}` when metadata is present.
 
-Supported metadata today:
+Supported metadata, read and written:
 
-- JPEG: EXIF read/write
-- PNG: EXIF read, text chunk read/write
-- JXL: EXIF read/write, XML and JUMBF box read/write
-- WebP: EXIF and XMP read/write
+- JPEG: EXIF, XMP, JFIF density
+- PNG: EXIF, XMP, text chunks
+- JXL: EXIF, XMP, XML and JUMBF boxes
+- WebP: EXIF, XMP
 
 ### Reading metadata
 
-Metadata is parsed by default during `decode/2` and `open/2`.
+Metadata is parsed by default during `decode/2` and `open/2`. EXIF tags that Imagex does not know, or
+cannot write back, are skipped, and byte-valued tags such as `exif_version` decode as binaries.
 
 ```elixir
 {:ok, image} = Imagex.open("lena.jpg")
@@ -94,7 +118,9 @@ image.metadata
 
 ### Writing metadata
 
-Metadata is written from `%Imagex.Image{metadata: ...}`.
+Metadata is written from `%Imagex.Image{metadata: ...}`. Decoded metadata can always be written
+back: re-encoding to the same format keeps it, and anything the target format cannot store is dropped
+(for example EXIF or XMP larger than a JPEG's 64 KB segment limit).
 
 ```elixir
 image = %Imagex.Image{
@@ -120,6 +146,7 @@ image = %Imagex.Image{
 {:ok, jxl_bytes} = Imagex.encode(image, :jxl, lossless: true)
 ```
 
+A `:metadata` option replaces the image's metadata, and `metadata: nil` writes none.
 You can also pass metadata directly when encoding a tensor:
 
 ```elixir
@@ -195,31 +222,41 @@ JXL container metadata uses `metadata.jxl_boxes` with atom box types:
 
 Notes:
 
-- `metadata.exif` is used for JPEG, JXL, and WebP writing.
+- `metadata.exif` is used for JPEG, PNG, JXL, and WebP writing.
 - `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, JXL XML boxes, and WebP XMP chunks.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
 - PNG text metadata is normalized on decode and written as `iTXt` chunks.
-- When decoding PNG and JXL, `metadata.xmp` is surfaced in addition to the primary container representation (`png_chunks` or `jxl_boxes`) when there is a single unambiguous XMP payload.
+- When decoding PNG and JXL, a single XMP chunk or XML box is returned as `metadata.xmp` rather than in `png_chunks` or `jxl_boxes`.
 - `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
 - `metadata.xmp` cannot be combined with JXL XML boxes in `metadata.jxl_boxes`, or with PNG XMP chunks in `metadata.png_chunks`.
 - Unsupported or malformed metadata returns `{:error, reason}` during encode.
 
-To work with pdf files
+## Documents
+
+PDF pages are rendered at a chosen resolution:
 
 ```elixir
-bytes = File.read!("lena.pdf")
-{:ok, pdf_document} = Imagex.decode(bytes, format: :pdf)
+{:ok, pdf_document} = Imagex.Pdf.load(File.read!("lena.pdf"))
 for i <- 0..pdf_document.num_pages-1 do
   {:ok, image} = Imagex.Pdf.render_page(pdf_document, i, dpi: 150)
 end
 ```
 
-and similarly, work with tiff files
+`Imagex.decode/2` decodes the first page of a TIFF (or the one given by `page:`). To render several
+pages from one load:
 
 ```elixir
-bytes = File.read!("lena.tiff")
-{:ok, tiff_document} = Imagex.decode(bytes, format: :tiff)
+{:ok, tiff_document} = Imagex.Tiff.load(File.read!("lena.tiff"))
 for i <- 0..tiff_document.num_pages-1 do
   {:ok, image} = Imagex.Tiff.render_page(tiff_document, i)
 end
+```
+
+## JPEG XL transcoding
+
+JPEGs can be converted to JXL losslessly, and back to the identical JPEG:
+
+```elixir
+{:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(File.read!("photo.jpg"))
+{:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(jxl_bytes)
 ```
