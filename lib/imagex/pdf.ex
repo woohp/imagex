@@ -20,7 +20,7 @@ defmodule Imagex.Pdf do
   end
 
   @doc """
-  Renders a zero-indexed page as an RGB(A) image.
+  Renders a zero-indexed page as an 8-bit RGBA image.
 
   Options:
 
@@ -28,7 +28,7 @@ defmodule Imagex.Pdf do
     * `:max_pixels` - as for `Imagex.decode/2`.
   """
   @spec render_page(t(), non_neg_integer(), keyword()) :: {:ok, Imagex.Image.t()} | {:error, String.t()}
-  def render_page(%__MODULE__{ref: ref, num_pages: num_pages}, page_idx, options \\ []) do
+  def render_page(%__MODULE__{ref: ref}, page_idx, options \\ []) do
     options = Keyword.validate!(options, dpi: 72, max_pixels: Imagex.Image.default_max_pixels())
     max_pixels = Imagex.Image.native_max_pixels(options[:max_pixels])
 
@@ -36,10 +36,6 @@ defmodule Imagex.Pdf do
       raise ArgumentError, "expected :dpi to be a positive integer, got: #{inspect(options[:dpi])}"
     end
 
-    if is_integer(page_idx) and page_idx in 0..(num_pages - 1)//1 do
-      Imagex.Image.from_native(Imagex.C.pdf_render_page(ref, page_idx, options[:dpi], max_pixels), false)
-    else
-      {:error, "page index out of range"}
-    end
+    Imagex.Image.from_native(Imagex.C.pdf_render_page(ref, page_idx, options[:dpi], max_pixels), false)
   end
 end
