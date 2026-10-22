@@ -156,6 +156,7 @@ yielding<expected<binary, string>> jpeg_compress(
     uint32_t height,
     uint32_t channels,
     int quality,
+    optional<tuple<uint8_t, uint16_t, uint16_t>> jfif_density,
     optional<vector<uint8_t>> exif_binary,
     optional<vector<uint8_t>> xmp_binary)
 {
@@ -182,6 +183,8 @@ yielding<expected<binary, string>> jpeg_compress(
 
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, TRUE);
+    if (jfif_density.has_value())
+        std::tie(cinfo.density_unit, cinfo.X_density, cinfo.Y_density) = jfif_density.value();
 
     // do the actual compression
     jpeg_start_compress(&cinfo, TRUE);
@@ -417,7 +420,8 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
     uint32_t height,
     uint32_t channels,
     uint32_t bit_depth,
-    optional<text_chunks_t> text_chunks)
+    optional<vector<uint8_t>> exif,
+    text_chunks_t text_chunks)
 {
     yielding_timer timer;
 
@@ -475,11 +479,14 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
         PNG_COMPRESSION_TYPE_BASE,
         PNG_FILTER_TYPE_BASE);
 
-    if (text_chunks.has_value() && !text_chunks->empty())
+    if (exif.has_value())
+        png_set_eXIf_1(png_ptr, info_ptr, exif->size(), exif->data());
+
+    if (!text_chunks.empty())
     {
         // libpng copies the text, so the entries can point into text_chunks.
         vector<png_text> png_text_entries;
-        for (auto& [key, value, language_tag, translated_keyword] : *text_chunks)
+        for (auto& [key, value, language_tag, translated_keyword] : text_chunks)
         {
             png_text entry = {};
             entry.compression = PNG_ITXT_COMPRESSION_NONE;
@@ -703,7 +710,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     uint32_t channels,
     uint32_t bit_depth,
     optional<binary> exif_binary,
-    optional<vector<pair<string, binary>>> jxl_boxes,
+    vector<pair<string, binary>> jxl_boxes,
     double distance,
     bool lossless,
     int effort,
@@ -716,7 +723,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     JXL_ENSURE_SUCCESS(JxlEncoderSetParallelRunner, enc.get(), JxlThreadParallelRunner, runner.get());
 
-    if (exif_binary.has_value() || jxl_boxes.has_value())
+    if (exif_binary.has_value() || !jxl_boxes.empty())
         JXL_ENSURE_SUCCESS(JxlEncoderUseBoxes, enc.get());
 
     JxlPixelFormat pixel_format = {channels, bit_depth == 16 ? JXL_TYPE_UINT16 : JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
@@ -767,16 +774,13 @@ expected<vector<uint8_t>, string_view> jxl_compress(
         JXL_ENSURE_SUCCESS(JxlEncoderAddBox, enc.get(), exif_box_type, exif_box.data(), exif_box.size(), JXL_FALSE);
     }
 
-    if (jxl_boxes.has_value())
+    for (const auto& [box_type, box_contents] : jxl_boxes)
     {
-        for (const auto& [box_type, box_contents] : jxl_boxes.value())
-        {
-            if (box_type.size() != 4)
-                return std::unexpected("JXL box types must be 4 bytes");
+        if (box_type.size() != 4)
+            return std::unexpected("JXL box types must be 4 bytes");
 
-            JXL_ENSURE_SUCCESS(
-                JxlEncoderAddBox, enc.get(), box_type.data(), box_contents.data, box_contents.size, JXL_FALSE);
-        }
+        JXL_ENSURE_SUCCESS(
+            JxlEncoderAddBox, enc.get(), box_type.data(), box_contents.data, box_contents.size, JXL_FALSE);
     }
 
     JXL_ENSURE_SUCCESS(JxlEncoderAddImageFrame, encoder_options, &pixel_format, pixels.data, pixels.size);

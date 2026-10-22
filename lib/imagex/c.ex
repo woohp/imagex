@@ -3,9 +3,9 @@ defmodule Imagex.C do
 
   # Dialyzer suppressions for NIF stub functions that call exit()
   @dialyzer {:nowarn_function, jpeg_decompress: 1}
-  @dialyzer {:nowarn_function, jpeg_compress: 7}
+  @dialyzer {:nowarn_function, jpeg_compress: 8}
   @dialyzer {:nowarn_function, png_decompress: 1}
-  @dialyzer {:nowarn_function, png_compress: 6}
+  @dialyzer {:nowarn_function, png_compress: 7}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
   @dialyzer {:nowarn_function, jxl_compress: 12}
   @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
@@ -29,9 +29,18 @@ defmodule Imagex.C do
     exit(:nif_library_not_loaded)
   end
 
-  @spec jpeg_compress(binary(), integer(), integer(), integer(), integer(), binary() | nil, binary() | nil) ::
+  @spec jpeg_compress(
+          binary(),
+          integer(),
+          integer(),
+          integer(),
+          integer(),
+          {integer(), integer(), integer()} | nil,
+          binary() | nil,
+          binary() | nil
+        ) ::
           compress_ret_type()
-  def jpeg_compress(_pixels, _width, _height, _channels, _quality, _exif_binary, _xmp_binary) do
+  def jpeg_compress(_pixels, _width, _height, _channels, _quality, _jfif_density, _exif_binary, _xmp_binary) do
     exit(:nif_library_not_loaded)
   end
 
@@ -46,10 +55,11 @@ defmodule Imagex.C do
           integer(),
           integer(),
           integer(),
-          list({binary(), binary(), binary(), binary()}) | nil
+          binary() | nil,
+          list({binary(), binary(), binary(), binary()})
         ) ::
           compress_ret_type()
-  def png_compress(_pixels, _width, _height, _channels, _bit_depth, _png_texts) do
+  def png_compress(_pixels, _width, _height, _channels, _bit_depth, _exif_binary, _png_texts) do
     exit(:nif_library_not_loaded)
   end
 
@@ -65,7 +75,7 @@ defmodule Imagex.C do
           integer(),
           integer(),
           binary() | nil,
-          list({binary(), binary()}) | nil,
+          list({binary(), binary()}),
           float(),
           boolean(),
           integer(),
