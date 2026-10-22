@@ -34,7 +34,6 @@ using namespace expp;
 
 using text_chunk_t = std::tuple<string, string, string, string>;
 using text_chunks_t = std::vector<text_chunk_t>;
-constexpr string_view JPEG_XMP_APP1_IDENTIFIER = "http://ns.adobe.com/xap/1.0/\0"sv;
 
 struct decompress_result_t
 {
@@ -173,8 +172,7 @@ yielding<expected<binary, string>> jpeg_compress(
     uint32_t channels,
     int quality,
     optional<tuple<uint8_t, uint16_t, uint16_t>> jfif_density,
-    optional<vector<uint8_t>> exif_binary,
-    optional<vector<uint8_t>> xmp_binary)
+    vector<vector<uint8_t>> app1_segments)
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
@@ -205,39 +203,8 @@ yielding<expected<binary, string>> jpeg_compress(
     // do the actual compression
     jpeg_start_compress(&cinfo, TRUE);
 
-    if (exif_binary.has_value())
-    {
-        const auto& exif = exif_binary.value();
-        vector<uint8_t> app1_payload;
-        app1_payload.reserve(6 + exif.size());
-        app1_payload.insert(app1_payload.end(), {'E', 'x', 'i', 'f', 0, 0});
-        app1_payload.insert(app1_payload.end(), exif.data(), exif.data() + exif.size());
-
-        if (app1_payload.size() > 65533)
-        {
-            co_yield std::unexpected("EXIF metadata is too large for a JPEG APP1 segment");
-            co_return;
-        }
-
-        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, app1_payload.data(), static_cast<unsigned int>(app1_payload.size()));
-    }
-
-    if (xmp_binary.has_value())
-    {
-        const auto& xmp = xmp_binary.value();
-        vector<uint8_t> app1_payload;
-        app1_payload.reserve(JPEG_XMP_APP1_IDENTIFIER.size() + xmp.size());
-        app1_payload.insert(app1_payload.end(), JPEG_XMP_APP1_IDENTIFIER.begin(), JPEG_XMP_APP1_IDENTIFIER.end());
-        app1_payload.insert(app1_payload.end(), xmp.data(), xmp.data() + xmp.size());
-
-        if (app1_payload.size() > 65533)
-        {
-            co_yield std::unexpected("XMP metadata is too large for a JPEG APP1 segment");
-            co_return;
-        }
-
-        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, app1_payload.data(), static_cast<unsigned int>(app1_payload.size()));
-    }
+    for (const auto& segment : app1_segments)
+        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, segment.data(), static_cast<unsigned int>(segment.size()));
 
     while (cinfo.next_scanline < cinfo.image_height)
     {
@@ -626,17 +593,16 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
     string box_type;  // type of the metadata box being collected, empty if none
     vector<uint8_t> box_data;
 
-    auto finish_box = [&]() -> expected<void, string_view> {
+    auto finish_box = [&]() {
         if (box_type.empty())
-            return {};
+            return;
 
         box_data.resize(box_data.size() - JxlDecoderReleaseBoxBuffer(dec.get()));
         if (box_type == "Exif")
         {
-            optional<binary> exif = parse_jxl_exif(box_data);
-            if (!exif.has_value())
-                return std::unexpected("invalid JXL metadata box");
-            result.exif = std::move(exif.value());
+            // A malformed Exif box is skipped, like malformed EXIF data.
+            if (optional<binary> exif = parse_jxl_exif(box_data))
+                result.exif = std::move(exif.value());
         }
         else
         {
@@ -645,7 +611,6 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
 
         box_type.clear();
-        return {};
     };
 
     for (;;)
@@ -693,8 +658,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_BOX)
         {
-            if (auto box_result = finish_box(); !box_result.has_value())
-                return std::unexpected(box_result.error());
+            finish_box();
 
             JxlBoxType type;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), type, JXL_TRUE);
@@ -721,8 +685,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_SUCCESS)
         {
-            if (auto box_result = finish_box(); !box_result.has_value())
-                return std::unexpected(box_result.error());
+            finish_box();
             return result;
         }
         else
@@ -739,7 +702,6 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     uint32_t height,
     uint32_t channels,
     uint32_t bit_depth,
-    optional<binary> exif_binary,
     vector<pair<string, binary>> jxl_boxes,
     double distance,
     bool lossless,
@@ -754,7 +716,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
     JXL_ENSURE_SUCCESS(JxlEncoderSetParallelRunner, enc.get(), JxlThreadParallelRunner, runner.get());
 
-    if (exif_binary.has_value() || !jxl_boxes.empty())
+    if (!jxl_boxes.empty())
         JXL_ENSURE_SUCCESS(JxlEncoderUseBoxes, enc.get());
 
     JxlPixelFormat pixel_format = {channels, bit_depth == 16 ? JXL_TYPE_UINT16 : JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
@@ -795,15 +757,6 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     if (order > 0)
     {
         JXL_ENSURE_SUCCESS(JxlEncoderFrameSettingsSetOption, encoder_options, JXL_ENC_FRAME_SETTING_GROUP_ORDER, order);
-    }
-
-    if (exif_binary.has_value())
-    {
-        const JxlBoxType exif_box_type = {'E', 'x', 'i', 'f'};
-        vector<uint8_t> exif_box(4 + exif_binary->size);
-        exif_box[0] = exif_box[1] = exif_box[2] = exif_box[3] = 0;
-        std::copy_n(exif_binary->data, exif_binary->size, exif_box.data() + 4);
-        JXL_ENSURE_SUCCESS(JxlEncoderAddBox, enc.get(), exif_box_type, exif_box.data(), exif_box.size(), JXL_FALSE);
     }
 
     for (const auto& [box_type, box_contents] : jxl_boxes)

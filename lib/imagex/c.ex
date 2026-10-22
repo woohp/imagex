@@ -22,11 +22,10 @@ defmodule Imagex.C do
           integer(),
           integer(),
           {integer(), integer(), integer()} | nil,
-          binary() | nil,
-          binary() | nil
+          list(binary())
         ) ::
           compress_ret_type()
-  def jpeg_compress(_pixels, _width, _height, _channels, _quality, _jfif_density, _exif_binary, _xmp_binary) do
+  def jpeg_compress(_pixels, _width, _height, _channels, _quality, _jfif_density, _app1_segments) do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
@@ -60,7 +59,6 @@ defmodule Imagex.C do
           integer(),
           integer(),
           integer(),
-          binary() | nil,
           list({binary(), binary()}),
           float(),
           boolean(),
@@ -76,7 +74,6 @@ defmodule Imagex.C do
         _height,
         _channels,
         _bit_depth,
-        _exif_binary,
         _jxl_boxes,
         _distance,
         _lossless,
