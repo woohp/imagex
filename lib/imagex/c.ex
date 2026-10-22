@@ -1,4 +1,6 @@
 defmodule Imagex.C do
+  @moduledoc false
+
   use Expp, path: Application.app_dir(:imagex, "priv/imagex")
 
   # Dialyzer suppressions for NIF stub functions that call exit()

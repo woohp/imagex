@@ -1,23 +1,23 @@
 defmodule Imagex.PPM do
+  @moduledoc false
   alias Imagex.Image
 
-  @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
-  def encode(%Nx.Tensor{shape: {height, width}} = image) do
-    pixels = Nx.to_binary(image)
-    {:ok, <<"P5\n#{width} #{height}\n255\n", pixels::binary>>}
+  @spec encode(Nx.Tensor.t()) :: {:ok, binary()} | {:error, String.t()}
+  def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width}} = image), do: encode("P5", width, height, image)
+  def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, 1}} = image), do: encode("P5", width, height, image)
+  def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, 3}} = image), do: encode("P6", width, height, image)
+  def encode(_image), do: {:error, "PPM requires unsigned 8-bit grayscale or RGB pixels"}
+
+  defp encode(magic, width, height, image) do
+    {:ok, <<magic::binary, "\n#{width} #{height}\n255\n", Nx.to_binary(image)::binary>>}
   end
 
-  def encode(%Nx.Tensor{shape: {height, width, 3}} = image) do
-    pixels = Nx.to_binary(image)
-    {:ok, <<"P6\n#{width} #{height}\n255\n", pixels::binary>>}
-  end
-
-  @spec decode(binary()) :: {:ok, {Nx.Tensor.t(), nil}} | {:error, String.t()}
+  @spec decode(binary()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes) do
     with <<"P", n, "\n", rest::binary>> when n == ?5 or n == ?6 <- bytes,
          [width, height, _max_value, pixels] <- String.split(rest, [" ", "\n"], parts: 4),
-         {width, ""} <- Integer.parse(width),
-         {height, ""} <- Integer.parse(height) do
+         {width, ""} when width > 0 <- Integer.parse(width),
+         {height, ""} when height > 0 <- Integer.parse(height) do
       {shape, channels} =
         if n == ?5 do
           {{height, width}, 1}

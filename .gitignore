@@ -3,3 +3,4 @@ priv
 deps
 a.out*
 .clangd
+/tmp

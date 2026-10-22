@@ -1,37 +1,42 @@
 defmodule Imagex.Jxl do
   @moduledoc """
-  JPEG XL (JXL) codec functions for transcoding and metadata extraction.
+  Lossless transcoding between JPEG and JPEG XL.
+
+  A JPEG transcoded to JXL is typically about 20% smaller and can be reconstructed bit-for-bit.
   """
 
   # Suppress dialyzer warnings for functions that call NIFs
   @dialyzer {:nowarn_function, transcode_from_jpeg: 2}
   @dialyzer {:nowarn_function, transcode_to_jpeg: 1}
 
-  @typedoc """
-  Effort level for JXL encoding.
-  Can be 1-9 or named presets.
-  """
-  @type effort ::
-          1..9
-          | :lightning
-          | :thunder
-          | :falcon
-          | :cheetah
-          | :hare
-          | :wombat
-          | :squirrel
-          | :kitten
-          | :tortoise
+  @doc """
+  Transcodes JPEG bytes to JXL without decoding the pixels.
 
-  @spec transcode_from_jpeg(binary(), keyword()) ::
-          {:ok, binary()} | {:error, String.t() | [atom()]}
+  Options:
+
+    * `:effort` - encoder effort, 1-9 (default 7).
+    * `:store_jpeg_metadata` - whether to keep the data needed to reconstruct the original JPEG file
+      (default `true`).
+  """
+  @spec transcode_from_jpeg(binary(), keyword()) :: {:ok, binary()} | {:error, String.t()}
   def transcode_from_jpeg(jpeg_bytes, options \\ []) when is_binary(jpeg_bytes) do
-    with {:ok, options} <- Keyword.validate(options, effort: 7, store_jpeg_metadata: true) do
-      effort = parse_effort(Keyword.get(options, :effort))
-      Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, effort, Keyword.get(options, :store_jpeg_metadata))
+    options = Keyword.validate!(options, effort: 7, store_jpeg_metadata: true)
+
+    unless is_integer(options[:effort]) and options[:effort] in 1..9 do
+      raise ArgumentError, "expected :effort to be an integer between 1 and 9, got: #{inspect(options[:effort])}"
     end
+
+    unless is_boolean(options[:store_jpeg_metadata]) do
+      raise ArgumentError,
+            "expected :store_jpeg_metadata to be a boolean, got: #{inspect(options[:store_jpeg_metadata])}"
+    end
+
+    Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, options[:effort], options[:store_jpeg_metadata])
   end
 
+  @doc """
+  Reconstructs the original JPEG from a JXL produced by `transcode_from_jpeg/2`.
+  """
   @spec transcode_to_jpeg(binary()) :: {:ok, binary()} | {:error, String.t()}
   def transcode_to_jpeg(jxl_bytes) when is_binary(jxl_bytes) do
     Imagex.C.jxl_transcode_to_jpeg(jxl_bytes)
@@ -74,18 +79,6 @@ defmodule Imagex.Jxl do
 
   def boxes_from_metadata(jxl_boxes, _xmp),
     do: {:error, "JXL metadata must be a list, got: #{inspect(jxl_boxes)}"}
-
-  @doc false
-  def parse_effort(value) when value in 1..9, do: value
-  def parse_effort(:lightning), do: 1
-  def parse_effort(:thunder), do: 2
-  def parse_effort(:falcon), do: 3
-  def parse_effort(:cheetah), do: 4
-  def parse_effort(:hare), do: 5
-  def parse_effort(:wombat), do: 6
-  def parse_effort(:squirrel), do: 7
-  def parse_effort(:kitten), do: 8
-  def parse_effort(:tortoise), do: 9
 
   defp native_box_type(:xml), do: "xml "
   defp native_box_type(:jumb), do: "jumb"

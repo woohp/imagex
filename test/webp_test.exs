@@ -134,8 +134,8 @@ defmodule Imagex.WebpTest do
     assert {:error, _} = Imagex.decode("bad", format: :webp)
     assert {:error, _} = Imagex.encode(Nx.tensor([[[1, 2, 3]]], type: :u16), :webp)
     tensor = Nx.tensor([[[1, 2, 3]]], type: :u8)
-    assert {:error, _} = Imagex.encode(tensor, :webp, effort: 7)
-    assert {:error, _} = Imagex.encode(tensor, :webp, quality: :bad)
+    assert_raise ArgumentError, fn -> Imagex.encode(tensor, :webp, effort: 7) end
+    assert_raise ArgumentError, fn -> Imagex.encode(tensor, :webp, quality: :bad) end
     assert {:error, _} = Imagex.encode(tensor, :webp, metadata: %{xmp: 123})
   end
 end

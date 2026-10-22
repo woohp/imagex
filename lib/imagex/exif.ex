@@ -1,10 +1,7 @@
 defmodule Imagex.Exif do
-  @moduledoc """
-  Provides functions for reading EXIF data.
+  @moduledoc false
 
-  Reference:
-  https://www.media.mit.edu/pia/Research/deepview/exif.html
-  """
+  # Reference: https://www.media.mit.edu/pia/Research/deepview/exif.html
 
   @exif_tags %{
     0x0001 => :interoperability_index,
