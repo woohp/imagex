@@ -820,13 +820,9 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         }
         else if (status == JXL_DEC_JPEG_NEED_MORE_OUTPUT)
         {
-            const size_t existing_size = jpeg_bytes.size();
-            jpeg_bytes.resize(static_cast<size_t>(existing_size * 1.5));
-            const size_t bytes_unwritten = JxlDecoderReleaseJPEGBuffer(dec.get());
-            const size_t bytes_already_written = existing_size - bytes_unwritten;
-            if (bytes_already_written != 0)
-                return std::unexpected("JXL JPEG transcode: unexpected partial write after buffer resize");
-            JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data(), jpeg_bytes.size());
+            const size_t written = jpeg_bytes.size() - JxlDecoderReleaseJPEGBuffer(dec.get());
+            jpeg_bytes.resize(static_cast<size_t>(jpeg_bytes.size() * 1.5));
+            JxlDecoderSetJPEGBuffer(dec.get(), jpeg_bytes.data() + written, jpeg_bytes.size() - written);
         }
         else if (status == JXL_DEC_FULL_IMAGE)
         {
