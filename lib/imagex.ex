@@ -49,15 +49,25 @@ defmodule Imagex do
     * `:format` - the format of `bytes`; detected from its signature by default.
     * `:parse_metadata` - whether to read metadata into `Imagex.Image.metadata` (default `true`).
     * `:page` - the zero-indexed page to decode from a TIFF (default `0`).
+    * `:orient` - whether to rotate and flip JPEG, PNG and WebP pixels as their EXIF orientation says,
+      then set that orientation to 1 (default `false`). JXL and TIFF pixels are always returned upright,
+      and a decoded JXL's EXIF orientation is set to 1 to match.
 
   PDF documents are not decoded here, since rendering requires choosing a resolution; use `Imagex.Pdf`.
   """
   @spec decode(binary(), keyword()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes, options \\ []) when is_binary(bytes) do
-    options = Keyword.validate!(options, [:format, parse_metadata: true, page: 0])
+    options = Keyword.validate!(options, [:format, parse_metadata: true, page: 0, orient: false])
     validate_option!(options, :parse_metadata, &is_boolean/1, "a boolean")
+    validate_option!(options, :orient, &is_boolean/1, "a boolean")
     validate_option!(options, :page, &(is_integer(&1) and &1 >= 0), "a non-negative integer")
-    decode_format(options[:format] || Imagex.Detect.detect(bytes), bytes, options)
+    format = options[:format] || Imagex.Detect.detect(bytes)
+    parse_metadata = options[:parse_metadata] or options[:orient]
+
+    with {:ok, image} <- decode_format(format, bytes, Keyword.put(options, :parse_metadata, parse_metadata)) do
+      image = if options[:orient] and format in [:jpeg, :png, :webp], do: orient(image), else: image
+      {:ok, if(options[:parse_metadata], do: image, else: %{image | metadata: nil})}
+    end
   end
 
   defp decode_format(:jpeg, bytes, options) do
@@ -70,8 +80,12 @@ defmodule Imagex do
   defp decode_format(:png, bytes, options),
     do: Image.from_native(Imagex.C.png_decompress(bytes), options[:parse_metadata])
 
-  defp decode_format(:jxl, bytes, options),
-    do: Image.from_native(Imagex.C.jxl_decompress(bytes), options[:parse_metadata])
+  # libjxl applies the codestream orientation, so the pixels are already upright.
+  defp decode_format(:jxl, bytes, options) do
+    with {:ok, image} <- Image.from_native(Imagex.C.jxl_decompress(bytes), options[:parse_metadata]) do
+      {:ok, upright(image)}
+    end
+  end
 
   defp decode_format(:webp, bytes, options) do
     with {:ok, image} <- Image.from_native(Imagex.C.webp_decompress(bytes), false),
@@ -92,6 +106,31 @@ defmodule Imagex do
   defp decode_format(:pdf, _bytes, _options), do: {:error, "PDF documents must be loaded with Imagex.Pdf.load/1"}
   defp decode_format(nil, _bytes, _options), do: {:error, "unrecognized image format"}
   defp decode_format(format, _bytes, _options), do: raise(ArgumentError, "unsupported format: #{inspect(format)}")
+
+  defp orient(%Image{metadata: %{exif: %{ifd0: %{orientation: orientation}}}} = image) do
+    transposed = if tuple_size(image.tensor.shape) == 2, do: [1, 0], else: [1, 0, 2]
+
+    tensor =
+      case orientation do
+        2 -> Nx.reverse(image.tensor, axes: [1])
+        3 -> Nx.reverse(image.tensor, axes: [0, 1])
+        4 -> Nx.reverse(image.tensor, axes: [0])
+        5 -> Nx.transpose(image.tensor, axes: transposed)
+        6 -> image.tensor |> Nx.transpose(axes: transposed) |> Nx.reverse(axes: [1])
+        7 -> image.tensor |> Nx.transpose(axes: transposed) |> Nx.reverse(axes: [0, 1])
+        8 -> image.tensor |> Nx.transpose(axes: transposed) |> Nx.reverse(axes: [0])
+        _ -> image.tensor
+      end
+
+    upright(%{image | tensor: tensor})
+  end
+
+  defp orient(image), do: image
+
+  defp upright(%Image{metadata: %{exif: %{ifd0: %{orientation: _}}}} = image),
+    do: put_in(image.metadata.exif.ifd0.orientation, 1)
+
+  defp upright(image), do: image
 
   @doc """
   Encodes an image and writes it to `path`.
@@ -214,7 +253,8 @@ defmodule Imagex do
         options[:lossless],
         options[:effort],
         options[:progressive],
-        if(options[:order] == :center, do: 1, else: 0)
+        if(options[:order] == :center, do: 1, else: 0),
+        exif_orientation(options[:metadata])
       )
     end
   end
@@ -335,6 +375,10 @@ defmodule Imagex do
   defp encode_exif(nil), do: {:ok, nil}
   defp encode_exif(exif) when is_map(exif), do: Imagex.Exif.encode_exif(exif)
   defp encode_exif(exif), do: {:error, "EXIF metadata must be a map, got: #{inspect(exif)}"}
+
+  # JXL viewers follow the codestream orientation rather than EXIF, so it is carried over.
+  defp exif_orientation(%{exif: %{ifd0: %{orientation: orientation}}}) when orientation in 1..8, do: orientation
+  defp exif_orientation(_metadata), do: 1
 
   # A JPEG APP1 segment holds at most 65,533 bytes; larger metadata cannot be stored, so it is dropped.
   defp fit_app1_segment(payload, identifier)

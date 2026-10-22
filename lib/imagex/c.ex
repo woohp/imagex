@@ -9,7 +9,7 @@ defmodule Imagex.C do
   @dialyzer {:nowarn_function, png_decompress: 1}
   @dialyzer {:nowarn_function, png_compress: 7}
   @dialyzer {:nowarn_function, jxl_decompress: 1}
-  @dialyzer {:nowarn_function, jxl_compress: 12}
+  @dialyzer {:nowarn_function, jxl_compress: 13}
   @dialyzer {:nowarn_function, jxl_transcode_from_jpeg: 3}
   @dialyzer {:nowarn_function, jxl_transcode_to_jpeg: 1}
   @dialyzer {:nowarn_function, pdf_load_document: 1}
@@ -82,6 +82,7 @@ defmodule Imagex.C do
           boolean(),
           integer(),
           integer(),
+          integer(),
           integer()
         ) ::
           compress_ret_type()
@@ -97,7 +98,8 @@ defmodule Imagex.C do
         _lossless,
         _effort,
         _progressive,
-        _order
+        _order,
+        _orientation
       ) do
     exit(:nif_library_not_loaded)
   end

@@ -715,7 +715,8 @@ expected<vector<uint8_t>, string_view> jxl_compress(
     bool lossless,
     int effort,
     int progressive,
-    int order)
+    int order,
+    int orientation)
 {
     auto runner = JxlThreadParallelRunnerMake(
         /*memory_manager=*/nullptr, JxlThreadParallelRunnerDefaultNumWorkerThreads());
@@ -742,6 +743,7 @@ expected<vector<uint8_t>, string_view> jxl_compress(
         basic_info.num_extra_channels = 1;
     }
     basic_info.uses_original_profile = lossless;
+    basic_info.orientation = static_cast<JxlOrientation>(orientation);
     JXL_ENSURE_SUCCESS(JxlEncoderSetBasicInfo, enc.get(), &basic_info);
 
     JxlColorEncoding color_encoding = {};
