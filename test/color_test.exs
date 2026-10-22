@@ -11,7 +11,7 @@ defmodule Imagex.ColorTest do
       image = %Image{tensor: tensor}
 
       converted = Imagex.convert(image, :L)
-      assert converted.tensor.shape == {2, 2, 1}
+      assert converted.tensor.shape == {2, 2}
       assert Nx.to_flat_list(converted.tensor) == [76, 150, 29, 255]
     end
 
@@ -51,7 +51,7 @@ defmodule Imagex.ColorTest do
       image = %Image{tensor: tensor}
 
       converted = Imagex.convert(image, :L)
-      assert converted.tensor.shape == {1, 1, 1}
+      assert converted.tensor.shape == {1, 1}
       assert Nx.to_flat_list(converted.tensor) == [38]
     end
 
@@ -70,7 +70,7 @@ defmodule Imagex.ColorTest do
       image = %Image{tensor: tensor}
 
       converted = Imagex.convert(image, :L)
-      assert converted.tensor.shape == {1, 1, 1}
+      assert converted.tensor.shape == {1, 1}
       assert Nx.to_flat_list(converted.tensor) == [64]
     end
 
@@ -116,6 +116,18 @@ defmodule Imagex.ColorTest do
       assert converted.tensor.type == {:f, 32}
       assert Nx.to_flat_list(converted.tensor) == [1.0, 0.0, 0.0, 1.0]
     end
+
+    test "float conversion keeps fractional values" do
+      image = %Image{tensor: Nx.tensor([[[1.0, 0.0, 0.0, 0.5]]], type: :f32)}
+
+      [gray] = Nx.to_flat_list(Imagex.convert(image, :L).tensor)
+      assert_in_delta gray, 0.299 * 0.5, 1.0e-6
+    end
+
+    test "L with a channel axis normalizes to {height, width}" do
+      image = %Image{tensor: Nx.tensor([[[1], [2]]], type: :u8)}
+      assert Imagex.convert(image, :L).tensor.shape == {1, 2}
+    end
   end
 
   describe "Real Image Samples (Verified with Pillow)" do
@@ -123,7 +135,7 @@ defmodule Imagex.ColorTest do
       {:ok, image} = Imagex.open("test/assets/lena.png")
       gray = Imagex.convert(image, :L)
       # Pillow convert("L") (0,0) gives 114
-      assert Nx.to_flat_list(Nx.slice(gray.tensor, [0, 0, 0], [1, 1, 1])) == [114]
+      assert Nx.to_flat_list(Nx.slice(gray.tensor, [0, 0], [1, 1])) == [114]
     end
 
     test "RGBA -> RGB (lena-rgba.png, merge onto black)" do
@@ -137,7 +149,7 @@ defmodule Imagex.ColorTest do
       {:ok, image} = Imagex.open("test/assets/lena-rgba.png")
       gray = Imagex.convert(image, :L)
       # Pillow manual merge onto black then to L (0,0) gives 85
-      assert Nx.to_flat_list(Nx.slice(gray.tensor, [0, 0, 0], [1, 1, 1])) == [85]
+      assert Nx.to_flat_list(Nx.slice(gray.tensor, [0, 0], [1, 1])) == [85]
     end
   end
 end
