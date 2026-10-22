@@ -84,6 +84,77 @@ defmodule ImagexTest do
   end
 
   describe "png" do
+    @palette <<255, 0, 0, 0, 255, 0>>
+    @transparent_palette_pixels <<255, 0, 0, 0, 0, 255, 0, 128, 0, 255, 0, 128, 255, 0, 0, 0>>
+
+    test "decodes palette PNG with transparency as RGBA" do
+      # Distinct rows catch incorrectly overlapping decoded scanlines.
+      png =
+        IO.iodata_to_binary([
+          <<137, 80, 78, 71, 13, 10, 26, 10>>,
+          png_chunk("IHDR", <<2::32, 2::32, 8, 3, 0, 0, 0>>),
+          png_chunk("PLTE", @palette),
+          png_chunk("tRNS", <<0, 128>>),
+          png_chunk("IDAT", :zlib.compress(<<0, 0, 1, 0, 1, 0>>)),
+          png_chunk("IEND", <<>>)
+        ])
+
+      assert {:ok, image} = Imagex.decode(png, format: :png)
+      assert image.tensor.shape == {2, 2, 4}
+      assert image.tensor.type == {:u, 8}
+      assert Nx.to_binary(image.tensor) == @transparent_palette_pixels
+    end
+
+    test "decodes interlaced palette PNG with transparency as RGBA" do
+      # For a 2x2 Adam7 image, only passes 1, 6, and 7 contain pixels.
+      png =
+        IO.iodata_to_binary([
+          <<137, 80, 78, 71, 13, 10, 26, 10>>,
+          png_chunk("IHDR", <<2::32, 2::32, 8, 3, 0, 0, 1>>),
+          png_chunk("PLTE", @palette),
+          png_chunk("tRNS", <<0, 128>>),
+          png_chunk("IDAT", :zlib.compress(<<0, 0, 0, 1, 0, 1, 0>>)),
+          png_chunk("IEND", <<>>)
+        ])
+
+      assert {:ok, image} = Imagex.decode(png, format: :png)
+      assert image.tensor.shape == {2, 2, 4}
+      assert image.tensor.type == {:u, 8}
+      assert Nx.to_binary(image.tensor) == @transparent_palette_pixels
+    end
+
+    test "decodes packed palette indices as eight-bit RGB" do
+      # Two two-bit indices per row, padded to a byte; each row starts with its filter byte.
+      png =
+        IO.iodata_to_binary([
+          <<137, 80, 78, 71, 13, 10, 26, 10>>,
+          png_chunk("IHDR", <<2::32, 2::32, 2, 3, 0, 0, 0>>),
+          png_chunk("PLTE", @palette),
+          png_chunk("IDAT", :zlib.compress(<<0, 0x10, 0, 0x40>>)),
+          png_chunk("IEND", <<>>)
+        ])
+
+      assert {:ok, image} = Imagex.decode(png, format: :png)
+      assert image.tensor.shape == {2, 2, 3}
+      assert image.tensor.type == {:u, 8}
+      assert Nx.to_binary(image.tensor) == <<255, 0, 0, 0, 255, 0, 0, 255, 0, 255, 0, 0>>
+    end
+
+    test "decodes one-bit grayscale as eight-bit grayscale" do
+      png =
+        IO.iodata_to_binary([
+          <<137, 80, 78, 71, 13, 10, 26, 10>>,
+          png_chunk("IHDR", <<2::32, 2::32, 1, 0, 0, 0, 0>>),
+          png_chunk("IDAT", :zlib.compress(<<0, 0x40, 0, 0x80>>)),
+          png_chunk("IEND", <<>>)
+        ])
+
+      assert {:ok, image} = Imagex.decode(png, format: :png)
+      assert image.tensor.shape == {2, 2}
+      assert image.tensor.type == {:u, 8}
+      assert Nx.to_binary(image.tensor) == <<0, 255, 255, 0>>
+    end
+
     test "decode rgb image", %{image: test_image} do
       png_bytes = File.read!("test/assets/lena.png")
       {:ok, %Image{} = image} = Imagex.decode(png_bytes, format: :png)
