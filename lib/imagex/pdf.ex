@@ -11,9 +11,6 @@ defmodule Imagex.Pdf do
 
   @type t :: %__MODULE__{ref: reference(), num_pages: non_neg_integer()}
 
-  @dialyzer {:nowarn_function, load: 1}
-  @dialyzer {:nowarn_function, render_page: 3}
-
   @doc "Loads a PDF document from its bytes."
   @spec load(binary()) :: {:ok, t()} | {:error, String.t()}
   def load(bytes) when is_binary(bytes) do
