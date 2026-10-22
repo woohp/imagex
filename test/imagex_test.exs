@@ -188,6 +188,27 @@ defmodule ImagexTest do
       assert String.starts_with?(error_reason, "invalid png header")
     end
 
+    test "decode expands tRNS transparency in RGB images" do
+      {:ok, png_bytes} = Imagex.encode(Nx.tensor([[[255, 0, 0], [0, 0, 255]]], type: {:u, 8}), :png)
+      [signature, ihdr | rest] = split_png_chunks(png_bytes)
+      png_bytes = IO.iodata_to_binary([signature, ihdr, png_chunk("tRNS", <<0::16, 0::16, 255::16>>) | rest])
+
+      {:ok, %Image{tensor: tensor}} = Imagex.decode(png_bytes)
+      assert Nx.to_list(tensor) == [[[255, 0, 0, 255], [0, 0, 255, 0]]]
+    end
+
+    test "decode reads metadata after the image data and requires IEND" do
+      {:ok, png_bytes} = Imagex.encode(Nx.iota({2, 2}, type: {:u, 8}), :png)
+      [signature | chunks] = split_png_chunks(png_bytes)
+      {chunks, [iend]} = Enum.split(chunks, -1)
+
+      png_bytes = IO.iodata_to_binary([signature, chunks, png_chunk("tEXt", "Comment\0after IDAT"), iend])
+      {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes)
+      assert [%{keyword: "Comment", text: "after IDAT"}] = metadata.png_chunks
+
+      assert {:error, _} = Imagex.decode(IO.iodata_to_binary([signature, chunks]))
+    end
+
     test "decode returns an error for truncated data" do
       png_bytes = File.read!("test/assets/lena.png")
       assert {:error, _} = Imagex.decode(binary_part(png_bytes, 0, 1000))

@@ -339,6 +339,10 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         break;
     }
 
+    // Palette images get tRNS expanded above; for grayscale and RGB it marks one transparent color.
+    if (color_type != PNG_COLOR_TYPE_PALETTE && png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
+        png_set_tRNS_to_alpha(png_ptr);
+
     if constexpr (std::endian::native == std::endian::little)
     {
         if (source_bit_depth == 16)
@@ -371,6 +375,9 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             }
         }
     }
+
+    // Read the chunks after the image data, which may hold metadata, and check the file is complete.
+    png_read_end(png_ptr, info_ptr);
 
     // read the exif data
     optional<binary> exif_data = nullopt;
