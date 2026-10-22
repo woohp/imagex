@@ -336,44 +336,39 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
 
         const png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
         const png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
-        png_uint_32 bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-        png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
+        const png_uint_32 source_bit_depth = png_get_bit_depth(png_ptr, info_ptr);
         const png_uint_32 color_type = png_get_color_type(png_ptr, info_ptr);
-        const auto interlace_type = png_get_interlace_type(png_ptr, info_ptr);
 
         switch (color_type)
         {
         case PNG_COLOR_TYPE_PALETTE:  // convert palette to RGB
             png_set_palette_to_rgb(png_ptr);
-            channels = 3;
             break;
         case PNG_COLOR_TYPE_GRAY:  // expand 1, 2, or 4 bit grayscale to 8 bit grayscale
-            if (bit_depth < 8)
+            if (source_bit_depth < 8)
                 png_set_expand_gray_1_2_4_to_8(png_ptr);
             break;
         }
 
         if constexpr (std::endian::native == std::endian::little)
         {
-            if (bit_depth == 16)
+            if (source_bit_depth == 16)
                 png_set_swap(png_ptr);
         }
 
-        const unsigned int stride = width * bit_depth * channels / 8;
+        const int num_passes = png_set_interlace_handling(png_ptr);
+        // Palette/transparency and packed-bit expansion change the output layout.
+        png_read_update_info(png_ptr, info_ptr);
+
+        const png_uint_32 bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+        const png_uint_32 channels = png_get_channels(png_ptr, info_ptr);
+        const size_t stride = png_get_rowbytes(png_ptr, info_ptr);
         binary output(height * stride);
 
         // Depending on whether the image is interlaced, we need to decode multiple passes
         // See https://github.com/glennrp/libpng/blob/libpng16/libpng-manual.txt and
         // libpng png_read_image's implementation
-        int num_passes = 1;
-
-        // if interlaced, we need to get the number of passes
-        if (interlace_type == PNG_INTERLACE_ADAM7)
-        {
-            num_passes = png_set_interlace_handling(png_ptr);
-            png_start_read_image(png_ptr);
-        }
-
+        // Adam7 passes update the same output rows in place.
         for (int pass = 0; pass < num_passes; pass++)
         {
             for (size_t i = 0; i < height; i++)
