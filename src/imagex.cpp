@@ -995,15 +995,63 @@ expected<decompress_result_t, string_view> tiff_render_page(tiff_resource_t docu
     if (width <= 0 || height <= 0)
         return std::unexpected("invalid TIFF image dimensions");
 
+    uint16_t orientation = ORIENTATION_TOPLEFT;
+    TIFFGetFieldDefaulted(document, TIFFTAG_ORIENTATION, &orientation);
+    if (orientation < ORIENTATION_TOPLEFT || orientation > ORIENTATION_LEFTBOT)
+        orientation = ORIENTATION_TOPLEFT;
+
+    // Requesting the file's own orientation reads the rows as stored. libtiff only flips, never
+    // transposes, so all orientations are applied below.
     binary pixels{static_cast<size_t>(width) * height * 4};
-    if (!TIFFReadRGBAImageOriented(
-            document, width, height, reinterpret_cast<uint32_t*>(pixels.data), ORIENTATION_TOPLEFT, 0))
+    if (!TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), orientation, 0))
         return std::unexpected("failed to read TIFF image");
 
+    if (orientation == ORIENTATION_TOPLEFT)
+        return decompress_result_t{
+            .pixels = std::move(pixels),
+            .width = static_cast<uint32_t>(width),
+            .height = static_cast<uint32_t>(height),
+            .channels = 4u,
+            .bit_depth = 8u,
+        };
+
+    const bool transposed = orientation >= ORIENTATION_LEFTTOP;
+    const size_t w = width, h = height, out_width = transposed ? h : w;
+    binary upright{pixels.size};
+    const auto stored = reinterpret_cast<const uint32_t*>(pixels.data);
+    auto out = reinterpret_cast<uint32_t*>(upright.data);
+    for (size_t r = 0; r < h; r++)
+    {
+        for (size_t c = 0; c < w; c++)
+        {
+            // where the stored pixel (r, c) lands, per the TIFF/EXIF orientation semantics
+            auto [i, j] = [&]() -> pair<size_t, size_t> {
+                switch (orientation)
+                {
+                case ORIENTATION_TOPRIGHT:
+                    return {r, w - 1 - c};
+                case ORIENTATION_BOTRIGHT:
+                    return {h - 1 - r, w - 1 - c};
+                case ORIENTATION_BOTLEFT:
+                    return {h - 1 - r, c};
+                case ORIENTATION_LEFTTOP:
+                    return {c, r};
+                case ORIENTATION_RIGHTTOP:
+                    return {c, h - 1 - r};
+                case ORIENTATION_RIGHTBOT:
+                    return {w - 1 - c, h - 1 - r};
+                default:  // ORIENTATION_LEFTBOT
+                    return {w - 1 - c, r};
+                }
+            }();
+            out[i * out_width + j] = stored[r * w + c];
+        }
+    }
+
     return decompress_result_t{
-        .pixels = std::move(pixels),
-        .width = static_cast<uint32_t>(width),
-        .height = static_cast<uint32_t>(height),
+        .pixels = std::move(upright),
+        .width = static_cast<uint32_t>(out_width),
+        .height = static_cast<uint32_t>(transposed ? w : h),
         .channels = 4u,
         .bit_depth = 8u,
     };
