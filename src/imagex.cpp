@@ -103,7 +103,6 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
 {
     struct jpeg_error_mgr err;
     struct jpeg_decompress_struct cinfo;
-    yielding_timer timer;
 
     // create decompressor
     cinfo.err = jpeg_std_error(&err);
@@ -137,6 +136,12 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
 
     const size_t row_stride = static_cast<size_t>(out_width) * num_components;
     binary output(row_stride * out_height);
+
+    // The steps so far, including copying the arguments and, for a progressive JPEG, decoding every scan in
+    // jpeg_start_decompress, cannot be split and run on the dirty scheduler the NIF is registered on. The
+    // scanlines are read in slices on normal schedulers.
+    co_yield schedule_on(DirtyFlags::NotDirty);
+    yielding_timer timer;
 
     // read scanlines
     while (cinfo.output_scanline < cinfo.output_height)
@@ -174,7 +179,6 @@ yielding<expected<binary, string>> jpeg_compress(
 {
     struct jpeg_error_mgr err;
     struct jpeg_compress_struct cinfo;
-    yielding_timer timer;
 
     // create the compressor
     cinfo.err = jpeg_std_error(&err);
@@ -204,6 +208,8 @@ yielding<expected<binary, string>> jpeg_compress(
     for (const auto& segment : app1_segments)
         jpeg_write_marker(&cinfo, JPEG_APP0 + 1, segment.data(), static_cast<unsigned int>(segment.size()));
 
+    co_yield schedule_on(DirtyFlags::NotDirty);
+    yielding_timer timer;
     while (cinfo.next_scanline < cinfo.image_height)
     {
         auto row = pixels.data() + cinfo.next_scanline * channels * width;
@@ -268,8 +274,6 @@ struct png_write_guard
 
 yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes, uint64_t max_pixels)
 {
-    yielding_timer timer;
-
     // check png signature
     if (png_bytes.size() < 8 || png_sig_cmp(png_bytes.data(), 0, 8))
     {
@@ -344,6 +348,9 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
     const size_t stride = png_get_rowbytes(png_ptr, info_ptr);
     binary output(height * stride);
 
+    co_yield schedule_on(DirtyFlags::NotDirty);
+    yielding_timer timer;
+
     // Depending on whether the image is interlaced, we need to decode multiple passes
     // See https://github.com/glennrp/libpng/blob/libpng16/libpng-manual.txt and
     // libpng png_read_image's implementation
@@ -416,8 +423,6 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
     optional<vector<uint8_t>> exif,
     text_chunks_t text_chunks)
 {
-    yielding_timer timer;
-
     int color_type;
     switch (channels)
     {
@@ -502,6 +507,9 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
         if (bit_depth == 16)
             png_set_swap(png_ptr);
     }
+
+    co_yield schedule_on(DirtyFlags::NotDirty);
+    yielding_timer timer;
 
     // write the pixels
     const size_t stride = static_cast<size_t>(width) * channels * bit_depth / 8;

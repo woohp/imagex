@@ -3,7 +3,9 @@
 Load and save images, using libjpeg, libpng, libjxl, libtiff, libwebp, and poppler as backends.
 Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf, webp (static images).
 
-Where possible, yielding NIFs are used so that it plays nice with BEAM VM's scheduler (WIP).
+JPEG and PNG pixels are encoded and decoded in ~1 ms slices on normal schedulers, alongside other processes;
+work that libjpeg/libpng cannot split, and the other formats, run on dirty schedulers. Many concurrent
+JPEG/PNG calls therefore compete for CPU like any other processes, so cap their concurrency if needed.
 
 
 ## Install
