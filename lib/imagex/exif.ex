@@ -453,42 +453,10 @@ defmodule Imagex.Exif do
     0x10022 => :deflate_subcodec
   }
 
-  @exif_tag_ids Enum.reduce(@exif_tags, %{}, fn {tag_id, tag_name}, acc ->
-                  Map.put_new(acc, tag_name, tag_id)
-                end)
-                |> Map.merge(%{
-                  latitude_ref: 0x0001,
-                  latitude: 0x0002,
-                  longitude_ref: 0x0003,
-                  longitude: 0x0004,
-                  altitude_ref: 0x0005,
-                  altitude: 0x0006,
-                  time_stamp: 0x0007,
-                  satellites: 0x0008,
-                  status: 0x0009,
-                  measure_mode: 0x000A,
-                  dop: 0x000B,
-                  speed_ref: 0x000C,
-                  speed: 0x000D,
-                  track_ref: 0x000E,
-                  track: 0x000F,
-                  img_direction_ref: 0x0010,
-                  img_direction: 0x0011,
-                  map_datum: 0x0012,
-                  dest_latitude_ref: 0x0013,
-                  dest_latitude: 0x0014,
-                  dest_longitude_ref: 0x0015,
-                  dest_longitude: 0x0016,
-                  dest_bearing_ref: 0x0017,
-                  dest_bearing: 0x0018,
-                  dest_distance_ref: 0x0019,
-                  dest_distance: 0x001A,
-                  processing_method: 0x001B,
-                  area_information: 0x001C,
-                  date_stamp: 0x001D,
-                  differential: 0x001E,
-                  h_positioning_error: 0x001F
-                })
+  @exif_tag_ids @exif_tags
+                |> Map.new(fn {tag_id, tag_name} -> {tag_name, tag_id} end)
+                # GPS tags 1 and 2 share ids with the interoperability tags above.
+                |> Map.merge(%{latitude_ref: 0x0001, latitude: 0x0002})
 
   @tiff_type_ids %{
     unsigned_byte: 1,
@@ -505,59 +473,25 @@ defmodule Imagex.Exif do
     double: 12
   }
 
-  @ascii_tags MapSet.new([
-                :artist,
-                :body_serial_number,
-                :camera_owner_name,
-                :copyright,
-                :date_stamp,
-                :dest_bearing_ref,
-                :dest_distance_ref,
-                :dest_latitude_ref,
-                :dest_longitude_ref,
-                :date_time,
-                :date_time_digitized,
-                :date_time_original,
-                :document_name,
-                :hostcomputer,
-                :image_description,
-                :image_unique_id,
-                :interopability_index,
-                :interoperability_index,
-                :latitude_ref,
-                :lens_make,
-                :lens_model,
-                :lens_serial_number,
-                :longitude_ref,
-                :make,
-                :map_datum,
-                :measure_mode,
-                :model,
-                :offset_time,
-                :offset_time_digitized,
-                :offset_time_original,
-                :processing_method,
-                :related_image_file_format,
-                :related_sound_file,
-                :satellites,
-                :software,
-                :speed_ref,
-                :spectral_sensitivity,
-                :status,
-                :sub_sec_time,
-                :sub_sec_time_digitized,
-                :sub_sec_time_original,
-                :track_ref,
-                :user_comment,
-                :xml_packet
-              ])
-
-  @type_overrides %{
+  @tag_types %{
+    composite_image: :unsigned_short,
+    gamma: :unsigned_rational,
+    inter_color_profile: :undefined,
+    primary_chromaticities: :unsigned_rational,
+    recommended_exposure_index: :unsigned_long,
+    reference_black_white: :unsigned_rational,
+    sensitivity_type: :unsigned_short,
+    standard_output_sensitivity: :unsigned_long,
+    time_zone_offset: :signed_short,
+    altitude: :unsigned_rational,
     altitude_ref: :unsigned_byte,
     aperture_value: :unsigned_rational,
     area_information: :undefined,
+    artist: :ascii_string,
     bits_per_sample: :unsigned_short,
+    body_serial_number: :ascii_string,
     brightness_value: :signed_rational,
+    camera_owner_name: :ascii_string,
     cfa_pattern: :undefined,
     cfa_repeat_pattern_dim: :unsigned_short,
     color_space: :unsigned_short,
@@ -565,11 +499,25 @@ defmodule Imagex.Exif do
     compressed_bits_per_pixel: :unsigned_rational,
     compression: :unsigned_short,
     contrast: :unsigned_short,
+    copyright: :ascii_string,
+    custom_rendered: :unsigned_short,
+    date_stamp: :ascii_string,
     date_time: :ascii_string,
     date_time_digitized: :ascii_string,
     date_time_original: :ascii_string,
+    dest_bearing: :unsigned_rational,
+    dest_bearing_ref: :ascii_string,
+    dest_distance: :unsigned_rational,
+    dest_distance_ref: :ascii_string,
+    dest_latitude: :unsigned_rational,
+    dest_latitude_ref: :ascii_string,
+    dest_longitude: :unsigned_rational,
+    dest_longitude_ref: :ascii_string,
     device_setting_description: :undefined,
+    differential: :unsigned_short,
     digital_zoom_ratio: :unsigned_rational,
+    document_name: :ascii_string,
+    dop: :unsigned_rational,
     exif_version: :undefined,
     exposure_bias_value: :signed_rational,
     exposure_index: :unsigned_rational,
@@ -581,16 +529,18 @@ defmodule Imagex.Exif do
     flash: :unsigned_short,
     flash_energy: :unsigned_rational,
     flash_pix_version: :undefined,
+    fnumber: :unsigned_rational,
     focal_length: :unsigned_rational,
     focal_length_in_35mm_film: :unsigned_short,
     focal_plane_resolution_unit: :unsigned_short,
     focal_plane_x_resolution: :unsigned_rational,
     focal_plane_y_resolution: :unsigned_rational,
-    fnumber: :unsigned_rational,
     gain_control: :unsigned_short,
     h_positioning_error: :unsigned_rational,
+    hostcomputer: :ascii_string,
     image_description: :ascii_string,
     image_length: :unsigned_long,
+    image_unique_id: :ascii_string,
     image_width: :unsigned_long,
     img_direction: :unsigned_rational,
     img_direction_ref: :ascii_string,
@@ -598,29 +548,42 @@ defmodule Imagex.Exif do
     interoperability_version: :undefined,
     iso_speed: :unsigned_long,
     iso_speed_ratings: :unsigned_short,
-    jpeg_interchange_format: :unsigned_long,
     jpeg_interchange_format_length: :unsigned_long,
     latitude: :unsigned_rational,
     latitude_ref: :ascii_string,
+    lens_make: :ascii_string,
+    lens_model: :ascii_string,
+    lens_serial_number: :ascii_string,
     lens_specification: :unsigned_rational,
     light_source: :unsigned_short,
     longitude: :unsigned_rational,
     longitude_ref: :ascii_string,
     make: :ascii_string,
     maker_note: :undefined,
+    map_datum: :ascii_string,
     max_aperture_value: :unsigned_rational,
+    measure_mode: :ascii_string,
     metering_mode: :unsigned_short,
     model: :ascii_string,
+    new_subfile_type: :unsigned_long,
     oecf: :undefined,
+    offset_time: :ascii_string,
+    offset_time_digitized: :ascii_string,
+    offset_time_original: :ascii_string,
     orientation: :unsigned_short,
     photometric_interpretation: :unsigned_short,
     pixel_x_dimension: :unsigned_long,
     pixel_y_dimension: :unsigned_long,
     planar_configuration: :unsigned_short,
     processing_method: :undefined,
+    related_image_file_format: :ascii_string,
+    related_image_length: :unsigned_long,
+    related_image_width: :unsigned_long,
+    related_sound_file: :ascii_string,
     resolution_unit: :unsigned_short,
     rows_per_strip: :unsigned_long,
     samples_per_pixel: :unsigned_short,
+    satellites: :ascii_string,
     saturation: :unsigned_short,
     scene_capture_type: :unsigned_short,
     scene_type: :undefined,
@@ -629,23 +592,28 @@ defmodule Imagex.Exif do
     shutter_speed_value: :signed_rational,
     software: :ascii_string,
     spatial_frequency_response: :undefined,
+    spectral_sensitivity: :ascii_string,
+    speed: :unsigned_rational,
+    speed_ref: :ascii_string,
+    status: :ascii_string,
     strip_byte_counts: :unsigned_long,
-    strip_offsets: :unsigned_long,
+    sub_sec_time: :ascii_string,
+    sub_sec_time_digitized: :ascii_string,
+    sub_sec_time_original: :ascii_string,
     subject_area: :unsigned_short,
     subject_distance: :unsigned_rational,
     subject_distance_range: :unsigned_short,
     subject_location: :unsigned_short,
-    sub_sec_time: :ascii_string,
-    sub_sec_time_digitized: :ascii_string,
-    sub_sec_time_original: :ascii_string,
-    thumbnail_data: :undefined,
     time_stamp: :unsigned_rational,
+    track: :unsigned_rational,
+    track_ref: :ascii_string,
     transfer_function: :unsigned_short,
     user_comment: :undefined,
     version_id: :unsigned_byte,
     white_balance: :unsigned_short,
     white_point: :unsigned_rational,
     x_resolution: :unsigned_rational,
+    xml_packet: :ascii_string,
     xp_author: :unsigned_byte,
     xp_comment: :unsigned_byte,
     xp_keywords: :unsigned_byte,
@@ -656,35 +624,6 @@ defmodule Imagex.Exif do
     ycbcr_positioning: :unsigned_short,
     ycbcr_sub_sampling: :unsigned_short
   }
-
-  @tag_types @type_overrides
-             |> Map.drop([:thumbnail_data, :jpeg_interchange_format, :strip_offsets, :strip_byte_counts])
-             |> Map.merge(Map.new(@ascii_tags, &{&1, :ascii_string}))
-             |> Map.merge(%{
-               altitude: :unsigned_rational,
-               body_serial_number: :ascii_string,
-               custom_rendered: :unsigned_short,
-               dest_bearing: :unsigned_rational,
-               dest_bearing_ref: :ascii_string,
-               dest_distance: :unsigned_rational,
-               dest_distance_ref: :ascii_string,
-               dest_latitude: :unsigned_rational,
-               dest_latitude_ref: :ascii_string,
-               dest_longitude: :unsigned_rational,
-               dest_longitude_ref: :ascii_string,
-               differential: :unsigned_short,
-               document_name: :ascii_string,
-               dop: :unsigned_rational,
-               measure_mode: :ascii_string,
-               new_subfile_type: :unsigned_long,
-               related_image_length: :unsigned_long,
-               related_image_width: :unsigned_long,
-               satellites: :ascii_string,
-               speed: :unsigned_rational,
-               speed_ref: :ascii_string,
-               track: :unsigned_rational,
-               track_ref: :ascii_string
-             })
 
   @gps_tag_names MapSet.new([
                    :version_id,
@@ -721,9 +660,20 @@ defmodule Imagex.Exif do
                    :h_positioning_error
                  ])
 
-  @interoperability_tag_names MapSet.new([:interoperability_index, :interoperability_version])
+  @interoperability_tag_names MapSet.new([
+                                :interoperability_index,
+                                :interoperability_version,
+                                :related_image_file_format,
+                                :related_image_width,
+                                :related_image_length
+                              ])
 
   @exif_ifd_tag_names MapSet.new([
+                        :composite_image,
+                        :gamma,
+                        :recommended_exposure_index,
+                        :sensitivity_type,
+                        :standard_output_sensitivity,
                         :aperture_value,
                         :body_serial_number,
                         :brightness_value,
@@ -825,86 +775,75 @@ defmodule Imagex.Exif do
                             :strip_byte_counts
                           ])
 
-  @spec read_exif_from_jpeg(binary()) :: map() | nil
-  def read_exif_from_jpeg(bytes) when is_binary(bytes) do
-    Imagex.Jfif.read_metadata_from_jpeg(bytes)
-  end
-
   @spec encode_exif(map()) :: {:ok, binary()} | {:error, String.t()}
   def encode_exif(exif) when is_map(exif) do
     with {:ok, ifds} <- extract_ifds(exif),
-         {:ok, binaries} <- encode_ifd_chain(ifds, 8) do
-      {:ok, [<<0x49, 0x49, 0x2A, 0x00, 8::32-little>> | binaries] |> IO.iodata_to_binary()}
+         {:ok, nodes} <- collect_ok(Enum.zip_with(ifds, [:ifd0, :ifd1], &build_ifd_node/2)) do
+      {:ok, IO.iodata_to_binary([<<"II", 0x2A::16-little, 8::32-little>> | render_chain(nodes, 8)])}
     end
   end
 
   def encode_exif(_), do: {:error, "EXIF metadata must be a map"}
 
-  @dialyzer {:nowarn_function, read_exif_from_jxl: 1}
-  @spec read_exif_from_jxl(binary()) :: map() | nil
-  def read_exif_from_jxl(bytes) when is_binary(bytes) do
-    case Imagex.Jxl.read_metadata_from_jxl(bytes) do
-      {:ok, nil} -> nil
-      {:ok, metadata} -> if Map.has_key?(metadata, :exif), do: %{exif: metadata.exif}, else: nil
-      {:error, _} -> nil
+  # Parses a TIFF-structured EXIF block. Malformed data yields no EXIF, and only what the encoder
+  # accepts is kept, so decoded EXIF can always be written back.
+  def read_exif_from_tiff(<<"II", 0x2A::16-little, offset::32-little, _::binary>> = data),
+    do: read_exif(data, :little, offset)
+
+  def read_exif_from_tiff(<<"MM", 0x2A::16-big, offset::32-big, _::binary>> = data),
+    do: read_exif(data, :big, offset)
+
+  def read_exif_from_tiff(_data), do: %{}
+
+  # Numeric arrays decode to lists, so all IFDs share one budget of decoded numeric values; this bounds
+  # the work crafted EXIF can cause, including IFDs that point at the same entries.
+  @numeric_value_budget 65_536
+
+  defp read_exif(data, endian, offset) do
+    case parse_ifd(data, endian, offset, :ifd0, @numeric_value_budget) do
+      {:ok, ifd0, ifd1_offset, budget} ->
+        case parse_ifd(data, endian, ifd1_offset, :ifd1, budget) do
+          {:ok, ifd1, _next_offset, _budget} -> %{exif: %{ifd0: ifd0, ifd1: extract_thumbnail(ifd1, data)}}
+          :error -> %{exif: %{ifd0: ifd0}}
+        end
+
+      :error ->
+        %{}
     end
   end
 
-  def read_exif_from_tiff(app1_data) do
-    # first, parse the header for the endian and offset
-    <<tiff_header::binary-size(8), _rest::binary>> = app1_data
-
-    {endian, offset} =
-      case tiff_header do
-        <<"II"::binary, 0x2A::16-little, offset::binary-size(4)>> -> {:little, offset}
-        <<"MM"::binary, 0x2A::16-big, offset::binary-size(4)>> -> {:big, offset}
+  # Replaces the thumbnail's offset tags with its bytes; the encoder recomputes the offsets.
+  defp extract_thumbnail(ifd, data) do
+    strips =
+      case ifd do
+        %{jpeg_interchange_format: offset, jpeg_interchange_format_length: length} -> [{offset, length}]
+        %{strip_offsets: offsets, strip_byte_counts: counts} -> Enum.zip(List.wrap(offsets), List.wrap(counts))
+        _ -> []
       end
 
-    offset = :binary.decode_unsigned(offset, endian)
+    ifd = Map.drop(ifd, Enum.to_list(@thumbnail_related_tags))
 
-    # parse the Image File Directory (IFD)
-    exif =
-      parse_ifds(app1_data, endian, offset)
+    in_bounds? = fn {offset, length} ->
+      is_integer(offset) and is_integer(length) and offset >= 0 and length >= 0 and offset + length <= byte_size(data)
+    end
 
-      # for each IFD, give it a name ifd#n where n is its index, and put them all into a map
-      |> Enum.with_index(fn element, index -> {String.to_atom("ifd#{index}"), element} end)
-      |> Enum.into(%{})
-
-    # if we have a thumbnail, extract the binary of the thumbnail
-    exif =
-      case exif do
-        %{ifd1: %{compression: 1, strip_offsets: strip_offsets, strip_byte_counts: strip_byte_counts}} ->
-          strip_byte_counts_sum =
-            case strip_byte_counts do
-              counts when is_list(counts) -> Enum.sum(counts)
-              count when is_integer(count) -> count
-            end
-
-          thumbnail_data = binary_part(app1_data, strip_offsets, strip_byte_counts_sum)
-          put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
-
-        %{
-          ifd1: %{
-            compression: 6,
-            jpeg_interchange_format: jpeg_interchange_format,
-            jpeg_interchange_format_length: jpeg_interchange_format_length
-          }
-        } ->
-          thumbnail_data = binary_part(app1_data, jpeg_interchange_format, jpeg_interchange_format_length)
-          put_in(exif, [:ifd1, :thumbnail_data], thumbnail_data)
-
-        _ ->
-          exif
-      end
-
-    %{exif: exif}
+    with true <- strips != [] and Enum.all?(strips, in_bounds?),
+         thumbnail_data = Enum.map_join(strips, fn {offset, length} -> binary_part(data, offset, length) end),
+         thumbnail_ifd = Map.put(ifd, :thumbnail_data, thumbnail_data),
+         {:ok, _normalized} <- normalize_thumbnail_ifd(thumbnail_ifd, :ifd1) do
+      thumbnail_ifd
+    else
+      _ -> ifd
+    end
   end
 
   defp extract_ifds(exif) when is_map(exif) do
     with :ok <- validate_top_level_ifds(exif),
-         {:ok, ifd0} <- normalize_ifd(Map.fetch!(exif, :ifd0), :ifd0),
-         {:ok, ifds} <- maybe_append_ifd1(exif, [ifd0]) do
-      {:ok, ifds}
+         {:ok, ifd0} <- normalize_ifd(Map.fetch!(exif, :ifd0), :ifd0) do
+      case Map.fetch(exif, :ifd1) do
+        {:ok, ifd1} -> with {:ok, ifd1} <- normalize_ifd(ifd1, :ifd1), do: {:ok, [ifd0, ifd1]}
+        :error -> {:ok, [ifd0]}
+      end
     end
   end
 
@@ -921,23 +860,10 @@ defmodule Imagex.Exif do
     end
   end
 
-  defp maybe_append_ifd1(exif, ifds) do
-    case Map.fetch(exif, :ifd1) do
-      {:ok, ifd1} ->
-        with {:ok, ifd1} <- normalize_ifd(ifd1, :ifd1) do
-          {:ok, ifds ++ [ifd1]}
-        end
-
-      :error ->
-        {:ok, ifds}
-    end
-  end
-
   defp normalize_ifd(ifd, location) when is_map(ifd) do
     with :ok <- validate_child_containers(ifd, location),
-         :ok <- validate_pointer_tags(ifd),
-         {:ok, ifd} <- normalize_thumbnail_ifd(ifd, location) do
-      {:ok, ifd}
+         :ok <- validate_pointer_tags(ifd) do
+      normalize_thumbnail_ifd(ifd, location)
     end
   end
 
@@ -955,9 +881,7 @@ defmodule Imagex.Exif do
   end
 
   defp validate_pointer_tags(ifd) do
-    pointer_tags = Map.values(@pointer_tags)
-
-    case Enum.find(pointer_tags, &Map.has_key?(ifd, &1)) do
+    case Enum.find(Map.values(@pointer_tags), &Map.has_key?(ifd, &1)) do
       nil -> :ok
       tag -> {:error, "EXIF pointer tag #{inspect(tag)} is synthesized and cannot be set directly"}
     end
@@ -965,6 +889,7 @@ defmodule Imagex.Exif do
 
   defp normalize_thumbnail_ifd(ifd, :ifd1) do
     thumbnail_data = Map.get(ifd, :thumbnail_data)
+    compression = Map.get(ifd, :compression)
 
     cond do
       is_nil(thumbnail_data) ->
@@ -976,20 +901,23 @@ defmodule Imagex.Exif do
       not is_binary(thumbnail_data) ->
         {:error, ":thumbnail_data must be a binary"}
 
-      not jpeg_thumbnail?(thumbnail_data) ->
-        {:error, "only JPEG EXIF thumbnails are supported"}
-
-      (compression = Map.get(ifd, :compression)) && compression != 6 ->
-        {:error, "only JPEG EXIF thumbnails with compression 6 are supported"}
-
-      true ->
+      # An explicit compression tag wins; the data is only sniffed when it is missing.
+      compression == 6 or (is_nil(compression) and jpeg_thumbnail?(thumbnail_data)) ->
         {:ok,
          ifd
-         |> Map.put(:compression, 6)
-         |> Map.put(:jpeg_interchange_format_length, byte_size(thumbnail_data))
-         |> Map.delete(:jpeg_interchange_format)
-         |> Map.delete(:strip_offsets)
-         |> Map.delete(:strip_byte_counts)}
+         |> Map.drop([:jpeg_interchange_format, :strip_offsets, :strip_byte_counts])
+         |> Map.merge(%{compression: 6, jpeg_interchange_format_length: byte_size(thumbnail_data)})}
+
+      compression in [nil, 1] ->
+        # Uncompressed thumbnails are written as a single strip.
+        {:ok,
+         ifd
+         |> Map.drop([:jpeg_interchange_format, :jpeg_interchange_format_length, :strip_offsets])
+         |> Map.merge(%{compression: 1, strip_byte_counts: byte_size(thumbnail_data)})
+         |> Map.replace(:rows_per_strip, Map.get(ifd, :image_length, 0xFFFFFFFF))}
+
+      true ->
+        {:error, "EXIF thumbnails must use compression 6 (JPEG) or 1 (uncompressed)"}
     end
   end
 
@@ -1007,51 +935,34 @@ defmodule Imagex.Exif do
     Enum.find(keys, &Map.has_key?(ifd, &1))
   end
 
-  defp encode_ifd_chain([], _offset), do: {:ok, []}
-
-  defp encode_ifd_chain([ifd], offset) do
-    with {:ok, node} <- build_ifd_node(ifd, :ifd0),
-         {:ok, {node, _end_offset}} <- layout_ifd(node, offset, 0),
-         do: {:ok, [render_ifd(node)]}
+  defp render_chain([node], offset) do
+    {node, _end_offset} = layout_ifd(node, offset)
+    [render_ifd(node)]
   end
 
-  defp encode_ifd_chain([ifd0, ifd1], offset) do
-    with {:ok, node} <- build_ifd_node(ifd0, :ifd0),
-         {:ok, {node, next_offset}} <- layout_ifd(node, offset, 0),
-         {:ok, binaries} <- encode_ifd_chain([ifd1], next_offset, :ifd1) do
-      node = %{node | next_ifd_offset: next_offset}
-      {:ok, [render_ifd(node) | binaries]}
-    end
-  end
-
-  defp encode_ifd_chain(_ifds, _offset) do
-    {:error, "only ifd0 and optional ifd1 are supported for EXIF encoding"}
-  end
-
-  defp encode_ifd_chain([ifd], offset, location) do
-    with {:ok, node} <- build_ifd_node(ifd, location),
-         {:ok, {node, _end_offset}} <- layout_ifd(node, offset, 0) do
-      {:ok, [render_ifd(node)]}
-    end
+  defp render_chain([node | rest], offset) do
+    {node, next_offset} = layout_ifd(node, offset)
+    [render_ifd(%{node | next_ifd_offset: next_offset}) | render_chain(rest, next_offset)]
   end
 
   defp build_ifd_node(ifd, location) do
-    thumbnail_data = Map.get(ifd, :thumbnail_data)
     child_keys = Map.fetch!(@child_ifds, location)
+    {thumbnail_data, ifd} = Map.pop(ifd, :thumbnail_data)
 
     entries =
       ifd
-      |> Map.drop(child_keys ++ [:thumbnail_data])
+      |> Map.drop(child_keys)
       |> Enum.map(&build_value_entry(&1, location))
 
     entries =
-      if is_binary(thumbnail_data) do
-        [build_data_pointer_entry(:jpeg_interchange_format, thumbnail_data) | entries]
+      if thumbnail_data do
+        pointer_tag = if ifd.compression == 6, do: :jpeg_interchange_format, else: :strip_offsets
+        [{:ok, build_data_pointer_entry(pointer_tag, thumbnail_data)} | entries]
       else
         entries
       end
 
-    with {:ok, entries} <- collect_results(entries),
+    with {:ok, entries} <- collect_ok(entries),
          {:ok, entries} <- add_pointer_entries(entries, ifd, location) do
       {:ok, %{entries: Enum.sort_by(entries, & &1.tag_id), next_ifd_offset: 0}}
     end
@@ -1064,47 +975,33 @@ defmodule Imagex.Exif do
         nil ->
           {:cont, {:ok, acc}}
 
-        child_ifd when is_map(child_ifd) ->
-          pointer_tag = Map.fetch!(@pointer_tags, child_key)
-
+        child_ifd ->
           with {:ok, child_ifd} <- normalize_ifd(child_ifd, child_key),
                {:ok, child_node} <- build_ifd_node(child_ifd, child_key) do
-            {:cont,
-             {:ok,
-              [
-                %{
-                  tag_id: Map.fetch!(@exif_tag_ids, pointer_tag),
-                  kind: :child,
-                  child: child_node,
-                  type: :unsigned_long,
-                  type_id: Map.fetch!(@tiff_type_ids, :unsigned_long),
-                  count: 1
-                }
-                | acc
-              ]}}
-          else
-            error ->
-              {:halt, error}
-          end
+            pointer_tag = Map.fetch!(@pointer_tags, child_key)
 
-        other ->
-          {:halt, {:error, "expected #{inspect(child_key)} to be a map, got: #{inspect(other)}"}}
+            entry = %{
+              tag_id: Map.fetch!(@exif_tag_ids, pointer_tag),
+              kind: :child,
+              child: child_node,
+              type_id: Map.fetch!(@tiff_type_ids, :unsigned_long),
+              count: 1
+            }
+
+            {:cont, {:ok, [entry | acc]}}
+          else
+            error -> {:halt, error}
+          end
       end
     end)
   end
 
   defp build_value_entry({tag_name, value}, location) do
     with {:ok, schema} <- fetch_tag_schema(tag_name, location),
-         {:ok, {count, data}} <- encode_schema_value(schema, value) do
+         {:ok, {count, data}} <- encode_tiff_value(schema.type, value),
+         :ok <- validate_count(tag_name, schema.count, count) do
       {:ok,
-       %{
-         tag_id: schema.id,
-         kind: :value,
-         type: schema.type,
-         type_id: Map.fetch!(@tiff_type_ids, schema.type),
-         count: count,
-         data: data
-       }}
+       %{tag_id: schema.id, kind: :value, type_id: Map.fetch!(@tiff_type_ids, schema.type), count: count, data: data}}
     else
       {:error, reason} -> {:error, "unsupported EXIF value for #{inspect(tag_name)}: #{reason}"}
     end
@@ -1114,54 +1011,32 @@ defmodule Imagex.Exif do
     %{
       tag_id: Map.fetch!(@exif_tag_ids, tag_name),
       kind: :data_pointer,
-      type: :unsigned_long,
       type_id: Map.fetch!(@tiff_type_ids, :unsigned_long),
       count: 1,
       data: data
     }
   end
 
-  defp collect_results(results) do
-    Enum.reduce_while(results, {:ok, []}, fn
-      %{tag_id: _} = entry, {:ok, acc} -> {:cont, {:ok, [entry | acc]}}
-      {:ok, entry}, {:ok, acc} -> {:cont, {:ok, [entry | acc]}}
+  defp collect_ok(results) do
+    results
+    |> Enum.reduce_while([], fn
+      {:ok, value}, acc -> {:cont, [value | acc]}
       {:error, _} = error, _acc -> {:halt, error}
     end)
+    |> case do
+      {:error, _} = error -> error
+      values -> {:ok, Enum.reverse(values)}
+    end
   end
 
   defp fetch_tag_schema(tag_name, location) do
-    with {:ok, tag_id} <- fetch_tag_id(tag_name),
-         {:ok, type} <- fetch_tag_type(tag_name),
-         :ok <- validate_tag_location(tag_name, location) do
-      {:ok,
-       %{
-         id: tag_id,
-         name: tag_name,
-         type: type,
-         count: Map.get(@tag_counts, tag_name, :any)
-       }}
-    end
-  end
-
-  defp fetch_tag_id(tag_name) do
-    case Map.fetch(@exif_tag_ids, tag_name) do
-      {:ok, tag_id} -> {:ok, tag_id}
-      :error -> {:error, "unsupported EXIF tag #{inspect(tag_name)}"}
-    end
-  end
-
-  defp fetch_tag_type(tag_name) do
-    case Map.fetch(@tag_types, tag_name) do
-      {:ok, type} -> {:ok, type}
-      :error -> {:error, "unsupported EXIF tag #{inspect(tag_name)}"}
-    end
-  end
-
-  defp validate_tag_location(tag_name, location) do
-    if location in tag_locations(tag_name) do
-      :ok
+    with {:ok, tag_id} <- Map.fetch(@exif_tag_ids, tag_name),
+         {:ok, type} <- Map.fetch(@tag_types, tag_name),
+         true <- location in tag_locations(tag_name) do
+      {:ok, %{id: tag_id, type: type, count: Map.get(@tag_counts, tag_name, :any)}}
     else
-      {:error, "EXIF tag #{inspect(tag_name)} is not valid in #{inspect(location)}"}
+      :error -> {:error, "unsupported EXIF tag #{inspect(tag_name)}"}
+      false -> {:error, "EXIF tag #{inspect(tag_name)} is not valid in #{inspect(location)}"}
     end
   end
 
@@ -1174,144 +1049,57 @@ defmodule Imagex.Exif do
     end
   end
 
-  defp encode_schema_value(schema, value) do
-    with {:ok, {count, data}} <- encode_tiff_value(schema.type, value),
-         :ok <- validate_count(schema.name, schema.count, count) do
-      {:ok, {count, data}}
-    end
-  end
-
   defp validate_count(_tag_name, :any, _count), do: :ok
+  defp validate_count(_tag_name, count, count), do: :ok
 
-  defp validate_count(tag_name, expected, actual) when is_integer(expected) do
-    if actual == expected do
-      :ok
-    else
-      {:error, "EXIF tag #{inspect(tag_name)} expects #{expected} value(s), got #{actual}"}
-    end
-  end
-
-  defp validate_count(tag_name, {:one_of, expected_counts}, actual) do
-    if actual in expected_counts do
-      :ok
-    else
-      {:error, "EXIF tag #{inspect(tag_name)} expects #{inspect(expected_counts)} value counts, got #{actual}"}
-    end
+  defp validate_count(tag_name, expected, actual) do
+    {:error, "EXIF tag #{inspect(tag_name)} expects #{expected} value(s), got #{actual}"}
   end
 
   defp encode_tiff_value(:ascii_string, value) when is_binary(value), do: {:ok, {byte_size(value) + 1, value <> <<0>>}}
   defp encode_tiff_value(:ascii_string, value), do: {:error, "cannot encode #{inspect(value)} as :ascii_string"}
 
-  defp encode_tiff_value(type, value) when type in [:undefined, :unsigned_byte] do
-    encode_byte_sequence(value, false, type)
-  end
+  defp encode_tiff_value(type, value) when type in [:undefined, :unsigned_byte, :signed_byte] and is_binary(value),
+    do: {:ok, {byte_size(value), value}}
 
-  defp encode_tiff_value(:signed_byte, value) do
-    encode_byte_sequence(value, true, :signed_byte)
-  end
+  defp encode_tiff_value(type, value) when type in [:undefined, :unsigned_byte, :signed_byte],
+    do: encode_sequence(value, &encode_integer(&1, 8, type == :signed_byte))
 
-  defp encode_tiff_value(type, value) when type in [:unsigned_short, :signed_short] do
-    encode_integer_sequence(value, 16, type == :signed_short, type)
-  end
+  defp encode_tiff_value(type, value) when type in [:unsigned_short, :signed_short],
+    do: encode_sequence(value, &encode_integer(&1, 16, type == :signed_short))
 
-  defp encode_tiff_value(type, value) when type in [:unsigned_long, :signed_long] do
-    encode_integer_sequence(value, 32, type == :signed_long, type)
-  end
+  defp encode_tiff_value(type, value) when type in [:unsigned_long, :signed_long],
+    do: encode_sequence(value, &encode_integer(&1, 32, type == :signed_long))
 
-  defp encode_tiff_value(type, value) when type in [:unsigned_rational, :signed_rational] do
-    encode_rational_sequence(value, type == :signed_rational, type)
-  end
+  defp encode_tiff_value(type, value) when type in [:unsigned_rational, :signed_rational],
+    do: encode_sequence(value, &encode_rational(&1, type == :signed_rational))
 
-  defp encode_tiff_value(:float, value) do
-    encode_float_sequence(value, 32, :float)
-  end
-
-  defp encode_tiff_value(:double, value) do
-    encode_float_sequence(value, 64, :double)
-  end
-
-  defp encode_tiff_value(type, value), do: {:error, "cannot encode #{inspect(value)} as #{inspect(type)}"}
-
-  defp encode_byte_sequence(value, _signed, _type) when is_binary(value), do: {:ok, {byte_size(value), value}}
-
-  defp encode_byte_sequence(value, signed, _type) do
+  defp encode_sequence(value, encoder) do
     values = List.wrap(value)
 
-    with {:ok, data} <- encode_many(values, &encode_integer(&1, 8, signed)) do
-      {:ok, {length(values), data}}
-    else
-      {:error, _} = error -> error
+    with {:ok, parts} <- collect_ok(Enum.map(values, encoder)) do
+      {:ok, {length(values), IO.iodata_to_binary(parts)}}
     end
   end
 
-  defp encode_integer_sequence(value, bits, signed, _type) do
-    values = List.wrap(value)
-
-    with {:ok, data} <- encode_many(values, &encode_integer(&1, bits, signed)) do
-      {:ok, {length(values), data}}
-    else
-      {:error, _} = error -> error
+  defp encode_rational({numerator, denominator}, signed) do
+    with {:ok, numerator} <- encode_integer(numerator, 32, signed),
+         {:ok, denominator} <- encode_integer(denominator, 32, signed) do
+      {:ok, [numerator, denominator]}
     end
   end
 
-  defp encode_rational_sequence(value, signed, type) do
-    values = List.wrap(value)
-
-    with {:ok, data} <-
-           encode_many(values, fn
-             {numerator, denominator} ->
-               with {:ok, numerator} <- encode_integer(numerator, 32, signed),
-                    {:ok, denominator} <- encode_integer(denominator, 32, signed) do
-                 {:ok, [numerator, denominator]}
-               end
-
-             other ->
-               {:error, "cannot encode #{inspect(other)} as #{inspect(type)}"}
-           end) do
-      {:ok, {length(values), data}}
-    end
-  end
-
-  defp encode_float_sequence(value, bits, type) do
-    values = List.wrap(value)
-
-    with {:ok, data} <-
-           encode_many(values, fn
-             item when is_float(item) ->
-               {:ok, if(bits == 32, do: <<item::float-32-little>>, else: <<item::float-64-little>>)}
-
-             other ->
-               {:error, "cannot encode #{inspect(other)} as #{inspect(type)}"}
-           end) do
-      {:ok, {length(values), data}}
-    end
-  end
-
-  defp encode_many(values, encoder) do
-    values
-    |> Enum.reduce_while([], fn value, acc ->
-      case encoder.(value) do
-        {:ok, encoded} -> {:cont, [encoded | acc]}
-        {:error, _} = error -> {:halt, error}
-      end
-    end)
-    |> case do
-      {:error, _} = error -> error
-      encoded -> {:ok, encoded |> Enum.reverse() |> IO.iodata_to_binary()}
-    end
-  end
+  defp encode_rational(other, _signed), do: {:error, "cannot encode #{inspect(other)} as a rational"}
 
   defp encode_integer(value, bits, signed) when is_integer(value) do
-    try do
-      {:ok,
-       if signed do
-         <<value::integer-signed-size(bits)-little>>
-       else
-         <<value::integer-unsigned-size(bits)-little>>
-       end}
-    rescue
-      ArgumentError ->
-        {:error, "integer #{inspect(value)} is out of range for #{bits}-bit #{signedness(signed)} integer"}
+    {min, max} =
+      if signed, do: {-Bitwise.bsl(1, bits - 1), Bitwise.bsl(1, bits - 1) - 1}, else: {0, Bitwise.bsl(1, bits) - 1}
+
+    if value in min..max do
+      {:ok, <<value::integer-size(bits)-little>>}
+    else
+      {:error,
+       "integer #{inspect(value)} is out of range for #{bits}-bit #{if signed, do: "signed", else: "unsigned"} integer"}
     end
   end
 
@@ -1319,10 +1107,7 @@ defmodule Imagex.Exif do
     {:error, "expected integer EXIF value, got: #{inspect(value)}"}
   end
 
-  defp signedness(true), do: "signed"
-  defp signedness(false), do: "unsigned"
-
-  defp layout_ifd(node, offset, next_ifd_offset) do
+  defp layout_ifd(node, offset) do
     entries = node.entries
     data_offset = offset + 2 + length(entries) * 12 + 4
 
@@ -1343,16 +1128,14 @@ defmodule Imagex.Exif do
     {entries, end_offset} =
       Enum.map_reduce(entries, data_offset, fn
         %{kind: :child, child: child} = entry, current_offset ->
-          {:ok, {child, child_end_offset}} = layout_ifd(child, current_offset, 0)
-          {Map.put(entry, :child, child) |> Map.put(:value_offset, current_offset), child_end_offset}
+          {child, child_end_offset} = layout_ifd(child, current_offset)
+          {%{entry | child: child, value_offset: current_offset}, child_end_offset}
 
         entry, current_offset ->
           {entry, current_offset}
       end)
 
-    {:ok,
-     {node |> Map.put(:entries, entries) |> Map.put(:offset, offset) |> Map.put(:next_ifd_offset, next_ifd_offset),
-      end_offset}}
+    {%{node | entries: entries}, end_offset}
   end
 
   defp render_ifd(node) do
@@ -1376,10 +1159,9 @@ defmodule Imagex.Exif do
 
   defp render_entry(entry) do
     value_field =
-      case entry.kind do
-        :child -> <<entry.value_offset::32-little>>
-        _ when is_nil(entry.value_offset) -> pad_to_four(entry.data)
-        _ -> <<entry.value_offset::32-little>>
+      case entry do
+        %{value_offset: nil, data: data} -> pad_to_four(data)
+        %{value_offset: value_offset} -> <<value_offset::32-little>>
       end
 
     <<entry.tag_id::16-little, entry.type_id::16-little, entry.count::32-little, value_field::binary-size(4)>>
@@ -1396,189 +1178,139 @@ defmodule Imagex.Exif do
     if rem(byte_size(data), 2) == 0, do: data, else: [data, <<0>>]
   end
 
-  defp pad_to_four(data) when byte_size(data) == 4, do: data
+  defp pad_to_four(data), do: data <> :binary.copy(<<0>>, 4 - byte_size(data))
 
-  defp pad_to_four(data) when byte_size(data) < 4,
-    do: IO.iodata_to_binary([data, :binary.copy(<<0>>, 4 - byte_size(data))])
+  defp parse_ifd(data, endian, offset, location, budget) when offset > 0 do
+    with <<_::binary-size(^offset), count::binary-size(2), rest::binary>> <- data,
+         entries_size = :binary.decode_unsigned(count, endian) * 12,
+         <<entries::binary-size(^entries_size), next_offset::binary-size(4), _::binary>> <- rest do
+      # The first entry for a tag wins; repeats are skipped before their values are decoded.
+      {tags, budget} =
+        for <<entry::binary-size(12) <- entries>>, reduce: {%{}, budget} do
+          {tags, budget} ->
+            case parse_tag(entry, endian, data, location, tags, budget) do
+              {{name, value}, budget} -> {Map.put(tags, name, value), budget}
+              {nil, budget} -> {tags, budget}
+            end
+        end
 
-  defp pad_to_four(_data), do: raise(ArgumentError, "inline TIFF field cannot exceed four bytes")
-
-  def parse_ifds(_app1_data, _endian, 0) do
-    []
-  end
-
-  def parse_ifds(app1_data, endian, offset) do
-    <<_::binary-size(^offset), num_entries::binary-size(2), rest::binary>> = app1_data
-    num_entries = :binary.decode_unsigned(num_entries, endian)
-    ifd_buffer_size = num_entries * 12
-
-    <<idf_buffer::binary-size(^ifd_buffer_size), next_idf_offset::binary-size(4), _rest::binary>> = rest
-    next_idf_offset = :binary.decode_unsigned(next_idf_offset, endian)
-
-    tags =
-      for <<chunk::binary-size(12) <- idf_buffer>> do
-        parse_tag(chunk, endian, app1_data)
-      end
-
-    tags_map = Enum.into(tags, %{})
-
-    if next_idf_offset > 0 and next_idf_offset < byte_size(app1_data) do
-      [tags_map | parse_ifds(app1_data, endian, next_idf_offset)]
+      {:ok, tags, :binary.decode_unsigned(next_offset, endian), budget}
     else
-      [tags_map]
+      _ -> :error
     end
   end
 
-  def parse_tag(chunk, endian, app1_data) do
+  defp parse_ifd(_data, _endian, _offset, _location, _budget), do: :error
+
+  @tiff_types %{
+    1 => {:unsigned_byte, 1},
+    2 => {:ascii_string, 1},
+    3 => {:unsigned_short, 2},
+    4 => {:unsigned_long, 4},
+    5 => {:unsigned_rational, 8},
+    6 => {:signed_byte, 1},
+    7 => {:undefined, 1},
+    8 => {:signed_short, 2},
+    9 => {:signed_long, 4},
+    10 => {:signed_rational, 8},
+    11 => {:float, 4},
+    12 => {:double, 8}
+  }
+
+  @pointer_children Map.new(@pointer_tags, fn {child, pointer} -> {pointer, child} end)
+
+  # Returns the tag (or nil for tags that cannot be named, decoded or written back, so they are skipped)
+  # and the remaining numeric value budget.
+  defp parse_tag(entry, endian, data, location, seen_tags, budget) do
     <<tag_id::binary-size(2), data_format::binary-size(2), num_components::binary-size(4), data_value::binary-size(4)>> =
-      chunk
+      entry
 
-    tag_id = :binary.decode_unsigned(tag_id, endian)
-
-    {data_format, bytes_per_component} =
-      case :binary.decode_unsigned(data_format, endian) do
-        1 -> {:unsigned_byte, 1}
-        2 -> {:ascii_string, 1}
-        3 -> {:unsigned_short, 2}
-        4 -> {:unsigned_long, 4}
-        5 -> {:unsigned_rational, 8}
-        6 -> {:signed_byte, 1}
-        7 -> {:undefined, 1}
-        8 -> {:signed_short, 2}
-        9 -> {:signed_long, 4}
-        10 -> {:signed_rational, 8}
-        11 -> {:float, 4}
-        12 -> {:double, 8}
-      end
-
+    tag_name = tag_name(:binary.decode_unsigned(tag_id, endian), location)
+    format = Map.get(@tiff_types, :binary.decode_unsigned(data_format, endian))
     num_components = :binary.decode_unsigned(num_components, endian)
-    total_bytes_size = num_components * bytes_per_component
 
-    # the data is either the value itself if the size <= 4, or it is an offset to the value
-    data_value =
-      if total_bytes_size > 4 do
-        value_offset = :binary.decode_unsigned(data_value, endian)
-        <<_::binary-size(^value_offset), data_value::binary-size(^total_bytes_size), _::binary>> = app1_data
-        data_value
-      else
-        data_value
+    with true <- tag_name != nil and not Map.has_key?(seen_tags, Map.get(@pointer_children, tag_name, tag_name)),
+         {data_format, bytes_per_component} <- format,
+         cost = if(data_format in [:ascii_string, :undefined], do: 0, else: num_components),
+         true <- cost <= budget,
+         {:ok, data_value} <- tag_data(data_value, num_components * bytes_per_component, endian, data) do
+      value = decode_value(data_format, bytes_per_component, num_components, data_value, endian)
+      budget = budget - cost
+      child = Map.get(@pointer_children, tag_name)
+
+      cond do
+        child != nil -> parse_child_ifd(data, endian, value, child, location, budget)
+        MapSet.member?(@thumbnail_related_tags, tag_name) -> {if(location == :ifd1, do: {tag_name, value}), budget}
+        match?({:ok, _}, build_value_entry({tag_name, value}, location)) -> {{tag_name, value}, budget}
+        true -> {nil, budget}
       end
-
-    # map the tag_ids to their names using the map constant (O(1) lookup)
-    tag_name = Map.get(@exif_tags, tag_id, :unknown)
-
-    decode_multiple = fn fun, args ->
-      decode_maybe_multiple(fun, num_components, bytes_per_component, data_value, args)
-    end
-
-    # parse the data value, depending on the data type
-    data_value =
-      case data_format do
-        :ascii_string ->
-          String.trim_trailing(data_value, "\0")
-
-        :unsigned_byte ->
-          decode_multiple.(&decode_integer/4, [1, false, endian])
-
-        :unsigned_short ->
-          decode_multiple.(&decode_integer/4, [2, false, endian])
-
-        :unsigned_long ->
-          decode_multiple.(&decode_integer/4, [4, false, endian])
-
-        :unsigned_rational ->
-          decode_multiple.(&decode_rational/3, [false, endian])
-
-        :signed_byte ->
-          decode_multiple.(&decode_integer/4, [1, true, endian])
-
-        :signed_short ->
-          decode_multiple.(&decode_integer/4, [2, true, endian])
-
-        :signed_long ->
-          decode_multiple.(&decode_integer/4, [4, true, endian])
-
-        :signed_rational ->
-          decode_multiple.(&decode_rational/3, [true, endian])
-
-        :float ->
-          decode_multiple.(&decode_float/2, [4])
-
-        :double ->
-          decode_multiple.(&decode_float/2, [8])
-
-        :undefined ->
-          decode_multiple.(&decode_integer/4, [1, false, endian])
-      end
-
-    # for pointers, follow the pointer and parse the IFD instead of returning the pointer
-    case tag_name do
-      :exif_ifd_pointer ->
-        {:exif, parse_ifds(app1_data, endian, data_value) |> hd() |> Enum.into(%{})}
-
-      :gps_info_ifd_pointer ->
-        {:gps,
-         parse_ifds(app1_data, endian, data_value)
-         |> hd()
-         |> Enum.map(fn {key, value} = entry ->
-           # we need to replace a couple of tag names because they overlap with other tags
-           case key do
-             :interoperability_index -> {:latitude_ref, value}
-             :interoperability_version -> {:latitude, value}
-             _ -> entry
-           end
-         end)
-         |> Enum.into(%{})}
-
-      :interoperability_ifd_pointer ->
-        {:interoperability, parse_ifds(app1_data, endian, data_value) |> hd() |> Enum.into(%{})}
-
-      _ ->
-        {tag_name, data_value}
+    else
+      _ -> {nil, budget}
     end
   end
 
-  defp decode_maybe_multiple(fun, count, bytes_per_component, data_value, args) do
-    if count == 1 do
-      apply(fun, [data_value | args])
+  # GPS tags 1 and 2 share ids with the interoperability tags.
+  defp tag_name(0x0001, :gps), do: :latitude_ref
+  defp tag_name(0x0002, :gps), do: :latitude
+  defp tag_name(tag_id, _location), do: Map.get(@exif_tags, tag_id)
+
+  # Only children the encoder can write are followed, which also rules out pointer cycles.
+  defp parse_child_ifd(data, endian, offset, child, location, budget) do
+    with true <- child in Map.fetch!(@child_ifds, location) and is_integer(offset),
+         {:ok, tags, _next_offset, budget} <- parse_ifd(data, endian, offset, child, budget) do
+      {{child, tags}, budget}
     else
-      for <<chunk::binary-size(^bytes_per_component) <- data_value>> do
-        apply(fun, [chunk | args])
+      _ -> {nil, budget}
+    end
+  end
+
+  # The data is either the value itself if the size <= 4, or it is an offset to the value.
+  defp tag_data(data_value, total_bytes_size, _endian, _data) when total_bytes_size <= 4,
+    do: {:ok, binary_part(data_value, 0, total_bytes_size)}
+
+  defp tag_data(data_value, total_bytes_size, endian, data) do
+    value_offset = :binary.decode_unsigned(data_value, endian)
+
+    case data do
+      <<_::binary-size(^value_offset), value::binary-size(^total_bytes_size), _::binary>> -> {:ok, value}
+      _ -> :error
+    end
+  end
+
+  defp decode_value(:ascii_string, _bytes_per_component, _count, data_value, _endian),
+    do: String.trim_trailing(data_value, "\0")
+
+  defp decode_value(:undefined, _bytes_per_component, _count, data_value, _endian), do: data_value
+
+  defp decode_value(data_format, bytes_per_component, count, data_value, endian) do
+    decode =
+      case data_format do
+        :unsigned_rational -> &decode_rational(&1, false, endian)
+        :signed_rational -> &decode_rational(&1, true, endian)
+        :float -> &decode_float(&1, 4, endian)
+        :double -> &decode_float(&1, 8, endian)
+        type -> &decode_integer(&1, bytes_per_component, type in [:signed_byte, :signed_short, :signed_long], endian)
       end
+
+    if count == 1 do
+      decode.(data_value)
+    else
+      for <<chunk::binary-size(^bytes_per_component) <- data_value>>, do: decode.(chunk)
     end
   end
 
   defp decode_integer(buffer, num_bytes, signed, endian) do
-    num_bits = num_bytes * 8
-
-    if signed do
-      case endian do
-        :little ->
-          <<value::integer-signed-size(^num_bits)-little, _rest::binary>> = buffer
-          value
-
-        :big ->
-          <<value::integer-signed-size(^num_bits)-big, _rest::binary>> = buffer
-          value
-      end
-    else
-      case endian do
-        :little ->
-          <<value::integer-unsigned-size(^num_bits)-little, _rest::binary>> = buffer
-          value
-
-        :big ->
-          <<value::integer-unsigned-size(^num_bits)-big, _rest::binary>> = buffer
-          value
-      end
-    end
+    value = :binary.decode_unsigned(binary_part(buffer, 0, num_bytes), endian)
+    range = Bitwise.bsl(1, num_bytes * 8)
+    if signed and value >= div(range, 2), do: value - range, else: value
   end
 
-  defp decode_float(buffer, num_bytes) do
-    num_bits = num_bytes * 8
-    <<value::float-size(^num_bits), _rest::binary>> = buffer
-    value
-  end
+  defp decode_float(<<value::float-32-little, _::binary>>, 4, :little), do: value
+  defp decode_float(<<value::float-32-big, _::binary>>, 4, :big), do: value
+  defp decode_float(<<value::float-64-little, _::binary>>, 8, :little), do: value
+  defp decode_float(<<value::float-64-big, _::binary>>, 8, :big), do: value
+  # NaN and infinities have no Elixir representation
+  defp decode_float(_buffer, _num_bytes, _endian), do: nil
 
   defp decode_rational(buffer, signed, endian) do
     <<numerator::binary-size(4), denominator::binary-size(4)>> = buffer

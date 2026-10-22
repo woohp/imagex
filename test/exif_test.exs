@@ -28,7 +28,7 @@ defmodule ExifTest do
                exif: %{
                  pixel_y_dimension: 118,
                  pixel_x_dimension: 170,
-                 user_comment: [65, 83, 67, 73, 73, 0, 0, 0, 83, 99, 114, 101, 101, 110, 115, 104, 111, 116],
+                 user_comment: <<65, 83, 67, 73, 73, 0, 0, 0, 83, 99, 114, 101, 101, 110, 115, 104, 111, 116>>,
                  date_time_original: "2022:10:22 00:36:00"
                },
                orientation: 1
@@ -50,7 +50,7 @@ defmodule ExifTest do
 
   test "exif from jpeg-xl file" do
     jxl_bytes = File.read!("test/assets/lena.jxl")
-    metadata = Imagex.Exif.read_exif_from_jxl(jxl_bytes)
+    metadata = read_metadata(jxl_bytes)
 
     assert metadata == %{
              exif: %{
@@ -67,7 +67,7 @@ defmodule ExifTest do
 
   test "encode_exif roundtrips parsed exif" do
     jpeg_bytes = File.read!("test/assets/lena.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
     assert Imagex.Exif.read_exif_from_tiff(exif_binary) == %{exif: exif}
@@ -75,15 +75,122 @@ defmodule ExifTest do
 
   test "encode_exif roundtrips parsed exif with thumbnail data" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
 
-    assert %{exif: reparsed_exif} = Imagex.Exif.read_exif_from_tiff(exif_binary)
+    assert Imagex.Exif.read_exif_from_tiff(exif_binary) == %{exif: exif}
+  end
 
-    {_offset, reparsed_exif} = pop_in(reparsed_exif, [:ifd1, :jpeg_interchange_format])
-    {_offset, exif} = pop_in(exif, [:ifd1, :jpeg_interchange_format])
-    assert reparsed_exif == exif
+  describe "malformed EXIF" do
+    test "is dropped instead of raising or looping" do
+      for exif <- [
+            "II*",
+            <<"XX", 42, 0, 8::32-little, 0::16, 0::32>>,
+            <<"II", 42, 0, 9999::32-little>>
+          ] do
+        assert Imagex.Exif.read_exif_from_tiff(exif) == %{}
+      end
+
+      # IFD0 whose next-IFD pointer and EXIF sub-IFD pointer both point back at itself
+      cyclic =
+        <<"II", 42, 0, 8::32-little, 1::16-little, 0x8769::16-little, 4::16-little, 1::32-little, 8::32-little,
+          8::32-little>>
+
+      assert %{exif: %{ifd0: %{}}} = Imagex.Exif.read_exif_from_tiff(cyclic)
+    end
+
+    test "only keeps what can be written back" do
+      # a third IFD, x_resolution stored as SHORT, and exposure_time (an EXIF IFD tag) in IFD0
+      exif =
+        <<"II", 42, 0, 8::32-little, 2::16-little, 0x011A::16-little, 3::16-little, 1::32-little, 72::32-little,
+          0x829A::16-little, 3::16-little, 1::32-little, 1::32-little, 38::32-little, 0::16-little, 44::32-little,
+          0::16-little, 0::32-little>>
+
+      assert %{exif: decoded} = Imagex.Exif.read_exif_from_tiff(exif)
+      assert decoded == %{ifd0: %{}, ifd1: %{}}
+      assert {:ok, _} = Imagex.Exif.encode_exif(decoded)
+    end
+
+    test "uncompressed thumbnails are read strip by strip" do
+      # header (0), empty IFD0 (8), IFD1 (14) whose two entries point to the strip offsets (44) and
+      # byte counts (52); the 3-byte strips sit at 60 and 66 with padding between them
+      exif =
+        <<"II", 42, 0, 8::32-little, 0::16-little, 14::32-little, 2::16-little, 0x0111::16-little, 4::16-little,
+          2::32-little, 44::32-little, 0x0117::16-little, 4::16-little, 2::32-little, 52::32-little, 0::32-little,
+          60::32-little, 66::32-little, 3::32-little, 3::32-little, 1, 2, 3, 0, 0, 0, 4, 5, 6>>
+
+      assert %{exif: %{ifd1: %{thumbnail_data: <<1, 2, 3, 4, 5, 6>>}}} = Imagex.Exif.read_exif_from_tiff(exif)
+    end
+
+    test "many entries sharing one large value decode quickly" do
+      count = 400
+      data_offset = 8 + 2 + count * 12 + 4
+      entry = <<0x8773::16-little, 7::16-little, 100_000::32-little, data_offset::32-little>>
+
+      exif =
+        <<"II", 42, 0, 8::32-little, count::16-little, :binary.copy(entry, count)::binary, 0::32,
+          :binary.copy(<<7>>, 100_000)::binary>>
+
+      {microseconds, %{exif: %{ifd0: ifd0}}} = :timer.tc(fn -> Imagex.Exif.read_exif_from_tiff(exif) end)
+      assert byte_size(ifd0.inter_color_profile) == 100_000
+      assert microseconds < 2_000_000
+    end
+
+    test "numeric arrays share one decode budget across IFDs" do
+      # 1000 distinct tags, each a 65,536-element rational array over one shared block, plus EXIF, GPS and
+      # interoperability pointers back to the same entry table
+      ids = Enum.to_list(0x0100..0x04E7)
+
+      pointers =
+        for tag <- [0x8769, 0x8825, 0xA005],
+            into: <<>>,
+            do: <<tag::16-little, 4::16-little, 1::32-little, 8::32-little>>
+
+      count = length(ids) + 3
+      data_offset = 8 + 2 + count * 12 + 4
+      arrays = for id <- ids, into: <<>>, do: <<id::16-little, 5::16-little, 65_536::32-little, data_offset::32-little>>
+
+      exif =
+        <<"II", 42, 0, 8::32-little, count::16-little, pointers::binary, arrays::binary, 0::32,
+          :binary.copy(<<1::32-little, 1::32-little>>, 65_536)::binary>>
+
+      {microseconds, %{exif: _}} = :timer.tc(fn -> Imagex.Exif.read_exif_from_tiff(exif) end)
+      assert microseconds < 2_000_000
+    end
+
+    test "negative thumbnail offsets are ignored" do
+      # IFD1 with a signed LONG jpeg_interchange_format of -1
+      exif =
+        <<"II", 42, 0, 8::32-little, 0::16-little, 14::32-little, 2::16-little, 0x0201::16-little, 9::16-little,
+          1::32-little, -1::signed-32-little, 0x0202::16-little, 4::16-little, 1::32-little, 3::32-little, 0::32>>
+
+      assert %{exif: %{ifd1: %{}}} = Imagex.Exif.read_exif_from_tiff(exif)
+    end
+
+    test "inline values ignore unused padding" do
+      # make: ASCII with count 2 ("A\0"), followed by padding "BC" in the 4-byte value field
+      exif =
+        <<"II", 42, 0, 8::32-little, 1::16-little, 0x010F::16-little, 2::16-little, 2::32-little, "A", 0, "BC", 0::32>>
+
+      assert %{exif: %{ifd0: %{make: "A"}}} = Imagex.Exif.read_exif_from_tiff(exif)
+    end
+
+    test "JPEG fill bytes before a marker do not hide metadata" do
+      image = %Image{tensor: Nx.iota({4, 6, 3}, type: {:u, 8}), metadata: %{exif: %{ifd0: %{orientation: 6}}}}
+      {:ok, jpeg} = Imagex.encode(image, :jpeg)
+      [{app1, _}] = :binary.matches(jpeg, <<0xFF, 0xE1>>)
+      padded = binary_part(jpeg, 0, app1) <> <<0xFF>> <> binary_part(jpeg, app1, byte_size(jpeg) - app1)
+
+      assert {:ok, %Image{metadata: %{exif: %{ifd0: %{orientation: 6}}}}} = Imagex.decode(padded)
+    end
+
+    test "malformed JFXX segments are skipped" do
+      {:ok, jpeg} = Imagex.encode(Nx.iota({4, 6, 3}, type: {:u, 8}), :jpeg)
+      <<0xFF, 0xD8, rest::binary>> = jpeg
+      bytes = <<0xFF, 0xD8, 0xFF, 0xE0, 8::16, "JFXX", 0, 0x11, rest::binary>>
+      assert {:ok, %Image{}} = Imagex.decode(bytes)
+    end
   end
 
   test "encode_exif keeps GPS ASCII ref tags as ASCII" do
@@ -107,15 +214,29 @@ defmodule ExifTest do
     assert {:error, "EXIF metadata must contain ifd0"} = Imagex.Exif.encode_exif(%{ifd1: %{orientation: 1}})
   end
 
-  test "encode_exif rejects raw thumbnail payloads" do
-    exif = %{ifd0: %{}, ifd1: %{thumbnail_data: <<0, 1, 2>>, compression: 1}}
+  test "encode_exif honors the thumbnail compression tag" do
+    exif = %{ifd0: %{}, ifd1: %{thumbnail_data: <<0, 1, 2>>, compression: 7}}
 
-    assert {:error, "only JPEG EXIF thumbnails are supported"} = Imagex.Exif.encode_exif(exif)
+    assert {:error, "EXIF thumbnails must use compression 6 (JPEG) or 1 (uncompressed)"} =
+             Imagex.Exif.encode_exif(exif)
+
+    # explicit compression wins over sniffing, so raw pixels may start like a JPEG
+    exif = %{ifd0: %{}, ifd1: %{thumbnail_data: <<0xFF, 0xD8, 0>>, compression: 1}}
+    {:ok, binary} = Imagex.Exif.encode_exif(exif)
+    assert Imagex.Exif.read_exif_from_tiff(binary) == %{exif: exif}
+  end
+
+  test "decoded EXIF from every sample JPEG survives re-encoding" do
+    for path <- Path.wildcard("test/assets/exif/**/*.jp*g") do
+      {:ok, image} = Imagex.open(path)
+      assert {:ok, bytes} = Imagex.encode(image, :jpeg), path
+      assert drop_compression(read_metadata(bytes)[:exif]) == drop_compression(image.metadata[:exif]), path
+    end
   end
 
   test "exif with rgb thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-sony-d700.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -125,16 +246,16 @@ defmodule ExifTest do
                  pixel_x_dimension: 1344,
                  color_space: 1,
                  date_time_original: "1998:12:01 14:22:36",
-                 flash_pix_version: ~c"0100",
+                 flash_pix_version: "0100",
                  flash: 0,
                  metering_mode: 2,
                  exposure_bias_value: {0, 100},
                  aperture_value: {250, 100},
                  shutter_speed_value: {500, 100},
                  compressed_bits_per_pixel: {6, 1},
-                 components_configuration: [1, 2, 3, 0],
+                 components_configuration: <<1, 2, 3, 0>>,
                  date_time_digitized: "1998:12:01 14:22:36",
-                 exif_version: ~c"0200",
+                 exif_version: "0200",
                  iso_speed_ratings: 200,
                  exposure_program: 3
                },
@@ -151,10 +272,8 @@ defmodule ExifTest do
                resolution_unit: 2,
                y_resolution: {72, 1},
                x_resolution: {72, 1},
-               strip_byte_counts: 14400,
                rows_per_strip: 60,
                samples_per_pixel: 3,
-               strip_offsets: 648,
                photometric_interpretation: 2,
                compression: 1,
                bits_per_sample: ~c"\b\b\b",
@@ -169,7 +288,7 @@ defmodule ExifTest do
 
   test "exif with jpeg thumbnail in jpeg file" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert %{
              ifd1: %{
@@ -178,9 +297,7 @@ defmodule ExifTest do
                x_resolution: {72, 1},
                ycbcr_positioning: 2,
                compression: 6,
-               thumbnail_data: thumbnail_data,
-               jpeg_interchange_format_length: 7935,
-               jpeg_interchange_format: 862
+               thumbnail_data: thumbnail_data
              }
            } = exif
 
@@ -192,15 +309,15 @@ defmodule ExifTest do
 
   test "exif with empty icc profile" do
     jpeg_bytes = File.read!("test/assets/exif/exif-empty-icc-profile.jpeg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert exif == %{
              ifd0: %{
                exif: %{
                  pixel_y_dimension: 3600,
                  pixel_x_dimension: 2700,
-                 exif_version: ~c"0220",
-                 interoperability: %{interoperability_version: ~c"0100", interoperability_index: "R98"},
+                 exif_version: "0220",
+                 interoperability: %{interoperability_version: "0100", interoperability_index: "R98"},
                  sub_sec_time: "567"
                },
                orientation: 1,
@@ -213,7 +330,7 @@ defmodule ExifTest do
 
   test "exif with jfif-app13" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jfif-app13-app14ycck-3channel.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -229,16 +346,14 @@ defmodule ExifTest do
                y_resolution: {72, 1},
                x_resolution: {72, 1},
                compression: 6,
-               thumbnail_data: _thumbnail_data,
-               jpeg_interchange_format_length: 2644,
-               jpeg_interchange_format: 286
+               thumbnail_data: _thumbnail_data
              }
            } = exif
   end
 
   test "exif with bad-exif-kodak-dc210" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
 
     assert %{
              ifd0: %{
@@ -251,9 +366,9 @@ defmodule ExifTest do
                  aperture_value: {40, 10},
                  shutter_speed_value: {50, 10},
                  compressed_bits_per_pixel: {0, 0},
-                 components_configuration: [1, 2, 3, 0],
-                 exif_version: ~c"0110",
-                 maker_note: [1, 4, 3, 0, 2, 1, 255, 255, 0, 1 | _rest],
+                 components_configuration: <<1, 2, 3, 0>>,
+                 exif_version: "0110",
+                 maker_note: <<1, 4, 3, 0, 2, 1, 255, 255, 0, 1, _::binary>>,
                  focal_length: {44, 10},
                  light_source: 0,
                  subject_distance: {0, 0},
@@ -268,17 +383,15 @@ defmodule ExifTest do
                x_resolution: {216, 1},
                ycbcr_positioning: 1,
                model: "DC210 Zoom (V05.00)",
-               image_description: <<0, 0, 0, 134>>,
-               copyright: <<0, 0, 0, 246>>
+               image_description: "",
+               copyright: ""
              },
              ifd1: %{
                resolution_unit: 2,
                y_resolution: {72, 1},
                x_resolution: {72, 1},
-               strip_byte_counts: 20736,
                rows_per_strip: 72,
                samples_per_pixel: 3,
-               strip_offsets: 928,
                photometric_interpretation: 2,
                compression: 1,
                bits_per_sample: ~c"\b\b\b",
@@ -291,14 +404,14 @@ defmodule ExifTest do
 
   test "long description" do
     jpeg_bytes = File.read!("test/assets/exif/exif-rgb-thumbnail-bad-exif-kodak-dc210.jpg")
-    %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+    %{exif: exif} = read_metadata(jpeg_bytes)
     assert %{ifd0: %{}, ifd1: %{}} = exif
   end
 
   describe "GPS exif" do
     test "DSCN0010.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0010.jpg")
-      %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+      %{exif: exif} = read_metadata(jpeg_bytes)
 
       assert %{
                ifd0: %{
@@ -320,7 +433,7 @@ defmodule ExifTest do
 
     test "DSCN0012.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/gps/DSCN0012.jpg")
-      %{exif: exif} = Imagex.Exif.read_exif_from_jpeg(jpeg_bytes)
+      %{exif: exif} = read_metadata(jpeg_bytes)
 
       assert %{
                ifd0: %{
@@ -346,9 +459,10 @@ defmodule ExifTest do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/olympus-d320l.jpg")
       {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
 
+      {<<0xFF, 0xD8, _::binary>>, metadata} = pop_in(metadata, [:jfif, :thumbnail_data])
+
       assert metadata == %{
                jfif: %{
-                 thumbnail_data: :not_working_yet,
                  thumbnail_height: 0,
                  thumbnail_width: 0,
                  density_units: 1,
@@ -375,18 +489,18 @@ defmodule ExifTest do
                      pixel_x_dimension: 640,
                      color_space: 1,
                      date_time_original: "2000:09:30 10:59:45",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 2,
                      exposure_bias_value: {0, 10},
                      compressed_bits_per_pixel: {2, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:09:30 10:59:45",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 100,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      focal_length: {216, 10},
@@ -394,8 +508,8 @@ defmodule ExifTest do
                      max_aperture_value: {3, 1},
                      fnumber: {40, 10},
                      exposure_time: {1, 197},
-                     file_source: 3,
-                     scene_type: 1
+                     file_source: <<3>>,
+                     scene_type: <<1>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -415,9 +529,7 @@ defmodule ExifTest do
                    date_time: "2000:09:30 10:59:45",
                    model: "CYBERSHOT",
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 2959,
-                   jpeg_interchange_format: 797
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -437,20 +549,20 @@ defmodule ExifTest do
                      pixel_x_dimension: 2400,
                      color_space: 1,
                      date_time_original: "2000:08:04 18:22:57",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 1,
                      metering_mode: 5,
                      exposure_bias_value: {0, 100},
                      aperture_value: {300, 100},
                      shutter_speed_value: {550, 100},
                      compressed_bits_per_pixel: {15, 10},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:08:04 18:22:57",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 200,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -458,8 +570,8 @@ defmodule ExifTest do
                      max_aperture_value: {300, 100},
                      brightness_value: {26, 100},
                      fnumber: {280, 100},
-                     file_source: 3,
-                     scene_type: 1,
+                     file_source: <<3>>,
+                     scene_type: <<1>>,
                      sensing_method: 2,
                      focal_plane_resolution_unit: 3,
                      focal_plane_y_resolution: {2381, 1},
@@ -482,9 +594,7 @@ defmodule ExifTest do
                    x_resolution: {72, 1},
                    ycbcr_positioning: 2,
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 8691,
-                   jpeg_interchange_format: 1074
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -504,16 +614,16 @@ defmodule ExifTest do
                      pixel_x_dimension: 1344,
                      color_space: 1,
                      date_time_original: "1998:12:01 14:22:36",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 2,
                      exposure_bias_value: {0, 100},
                      aperture_value: {250, 100},
                      shutter_speed_value: {500, 100},
                      compressed_bits_per_pixel: {6, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "1998:12:01 14:22:36",
-                     exif_version: ~c"0200",
+                     exif_version: "0200",
                      iso_speed_ratings: 200,
                      exposure_program: 3
                    },
@@ -530,10 +640,8 @@ defmodule ExifTest do
                    resolution_unit: 2,
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
-                   strip_byte_counts: 14400,
                    rows_per_strip: 60,
                    samples_per_pixel: 3,
-                   strip_offsets: 648,
                    photometric_interpretation: 2,
                    compression: 1,
                    bits_per_sample: ~c"\b\b\b",
@@ -559,17 +667,17 @@ defmodule ExifTest do
                      pixel_x_dimension: 1280,
                      color_space: 1,
                      date_time_original: "1999:05:25 21:00:09",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 1,
                      metering_mode: 1,
                      exposure_bias_value: {0, 100},
                      aperture_value: {40, 10},
                      shutter_speed_value: {50, 10},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "1999:05:25 21:00:09",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -578,8 +686,8 @@ defmodule ExifTest do
                      max_aperture_value: {38, 10},
                      fnumber: {4, 1},
                      exposure_time: {1, 30},
-                     file_source: 3,
-                     scene_type: 1,
+                     file_source: <<3>>,
+                     scene_type: <<1>>,
                      sensing_method: 2,
                      exposure_index: {140, 1}
                    },
@@ -597,9 +705,7 @@ defmodule ExifTest do
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 6934,
-                   jpeg_interchange_format: 1480
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -620,18 +726,18 @@ defmodule ExifTest do
                      color_space: 1,
                      user_comment: _user_comment,
                      date_time_original: "2000:11:07 10:41:43",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 5,
                      exposure_bias_value: {0, 10},
                      compressed_bits_per_pixel: {1, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:11:07 10:41:43",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 125,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -640,8 +746,8 @@ defmodule ExifTest do
                      max_aperture_value: {3, 1},
                      fnumber: {80, 10},
                      exposure_time: {1, 345},
-                     file_source: 3,
-                     scene_type: 1
+                     file_source: <<3>>,
+                     scene_type: <<1>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -658,9 +764,7 @@ defmodule ExifTest do
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 5145,
-                   jpeg_interchange_format: 2012
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -680,14 +784,14 @@ defmodule ExifTest do
                      pixel_x_dimension: 640,
                      color_space: 65535,
                      date_time_original: "1998:01:01 00:00:00",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 1,
                      metering_mode: 2,
                      exposure_bias_value: {0, 10},
                      compressed_bits_per_pixel: {17, 10},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "1998:01:01 00:00:00",
-                     exif_version: ~c"0200",
+                     exif_version: "0200",
                      maker_note: _maker_note,
                      focal_length: {60, 10},
                      light_source: 0,
@@ -695,7 +799,7 @@ defmodule ExifTest do
                      fnumber: {80, 10},
                      exposure_time: {1, 171},
                      related_sound_file: "            ",
-                     file_source: 3
+                     file_source: <<3>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -712,9 +816,7 @@ defmodule ExifTest do
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 3602,
-                   jpeg_interchange_format: 877
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -735,17 +837,17 @@ defmodule ExifTest do
                      color_space: 1,
                      user_comment: _user_comment,
                      date_time_original: "2000:05:31 21:50:40",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 1,
                      exposure_bias_value: {0, 10},
                      aperture_value: {40, 10},
                      shutter_speed_value: {65, 10},
                      compressed_bits_per_pixel: {300, 100},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:05:31 21:50:40",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -768,9 +870,7 @@ defmodule ExifTest do
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 5046,
-                   jpeg_interchange_format: 1061
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -790,18 +890,18 @@ defmodule ExifTest do
                      color_space: 1,
                      user_comment: _user_comment,
                      date_time_original: "2001:04:06 11:51:40",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 5,
                      exposure_bias_value: {0, 10},
                      compressed_bits_per_pixel: {4, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2001:04:06 11:51:40",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 80,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -810,8 +910,8 @@ defmodule ExifTest do
                      max_aperture_value: {26, 10},
                      fnumber: {55, 10},
                      exposure_time: {10, 770},
-                     file_source: 3,
-                     scene_type: 1
+                     file_source: <<3>>,
+                     scene_type: <<1>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -828,9 +928,7 @@ defmodule ExifTest do
                    y_resolution: {300, 1},
                    x_resolution: {300, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 4662,
-                   jpeg_interchange_format: 2036
+                   thumbnail_data: _thumbnail_data
                  }
                },
                jfif: %{
@@ -860,32 +958,32 @@ defmodule ExifTest do
                      pixel_x_dimension: 640,
                      color_space: 1,
                      date_time_original: "2000:09:02 14:30:10",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 5,
                      exposure_bias_value: {0, 10},
                      aperture_value: {56, 10},
                      shutter_speed_value: {74, 10},
                      compressed_bits_per_pixel: {2, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:09:02 14:30:10",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 125,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      focal_length: {99, 10},
                      max_aperture_value: {33, 10},
                      brightness_value: {76, 10},
                      fnumber: {70, 10},
-                     file_source: 3,
+                     file_source: <<3>>,
                      sensing_method: 2,
                      focal_plane_resolution_unit: 3,
                      focal_plane_y_resolution: {1087, 1},
                      focal_plane_x_resolution: {1087, 1},
-                     scene_type: 1
+                     scene_type: <<1>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -904,9 +1002,7 @@ defmodule ExifTest do
                    x_resolution: {72, 1},
                    ycbcr_positioning: 2,
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 4354,
-                   jpeg_interchange_format: 856
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -926,32 +1022,32 @@ defmodule ExifTest do
                      pixel_x_dimension: 1024,
                      color_space: 1,
                      date_time_original: "2001:04:12 20:33:14",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 1,
                      metering_mode: 5,
                      exposure_bias_value: {0, 10},
                      aperture_value: {41, 10},
                      shutter_speed_value: {66, 10},
                      compressed_bits_per_pixel: {14, 10},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2001:04:12 20:33:14",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 150,
                      exposure_program: 2,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      focal_length: {58, 10},
                      max_aperture_value: {41, 10},
                      brightness_value: {-27, 10},
                      fnumber: {42, 10},
-                     file_source: 3,
+                     file_source: <<3>>,
                      sensing_method: 2,
                      focal_plane_resolution_unit: 3,
                      focal_plane_y_resolution: {2151, 1},
                      focal_plane_x_resolution: {2151, 1},
-                     scene_type: 1
+                     scene_type: <<1>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -970,9 +1066,7 @@ defmodule ExifTest do
                    x_resolution: {72, 1},
                    ycbcr_positioning: 2,
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 10274,
-                   jpeg_interchange_format: 856
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -995,8 +1089,8 @@ defmodule ExifTest do
                      aperture_value: {40, 10},
                      shutter_speed_value: {50, 10},
                      compressed_bits_per_pixel: {0, 0},
-                     components_configuration: [1, 2, 3, 0],
-                     exif_version: ~c"0110",
+                     components_configuration: <<1, 2, 3, 0>>,
+                     exif_version: "0110",
                      maker_note: _maker_note,
                      focal_length: {44, 10},
                      light_source: 0,
@@ -1012,17 +1106,15 @@ defmodule ExifTest do
                    x_resolution: {216, 1},
                    ycbcr_positioning: 1,
                    model: "DC210 Zoom (V05.00)",
-                   image_description: <<0, 0, 0, 134>>,
-                   copyright: <<0, 0, 0, 246>>
+                   image_description: "",
+                   copyright: ""
                  },
                  ifd1: %{
                    resolution_unit: 2,
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
-                   strip_byte_counts: 20736,
                    rows_per_strip: 72,
                    samples_per_pixel: 3,
-                   strip_offsets: 928,
                    photometric_interpretation: 2,
                    compression: 1,
                    bits_per_sample: ~c"\b\b\b",
@@ -1049,18 +1141,18 @@ defmodule ExifTest do
                      color_space: 1,
                      user_comment: _user_comment,
                      date_time_original: "2001:06:09 15:17:32",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 2,
                      exposure_bias_value: {0, 3},
                      aperture_value: {262_144, 65536},
                      shutter_speed_value: {553_859, 65536},
                      compressed_bits_per_pixel: {3, 1},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2001:06:09 15:17:32",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98",
                        related_image_length: 480,
                        related_image_width: 640
@@ -1071,7 +1163,7 @@ defmodule ExifTest do
                      max_aperture_value: {194_698, 65536},
                      fnumber: {40, 10},
                      exposure_time: {1, 350},
-                     file_source: 3,
+                     file_source: <<3>>,
                      sensing_method: 2,
                      focal_plane_resolution_unit: 2,
                      focal_plane_y_resolution: {480_000, 155},
@@ -1090,9 +1182,7 @@ defmodule ExifTest do
                    y_resolution: {180, 1},
                    x_resolution: {180, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 5342,
-                   jpeg_interchange_format: 1524
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
@@ -1101,6 +1191,8 @@ defmodule ExifTest do
     test "sony-powershota5.jpg" do
       jpeg_bytes = File.read!("test/assets/exif/exif-org/sony-powershota5.jpg")
       {:ok, %Image{metadata: metadata}} = Imagex.decode(jpeg_bytes, format: :jpeg)
+
+      {<<0xFF, 0xD8, _::binary>>, metadata} = pop_in(metadata, [:jfif, :thumbnail_data])
 
       assert metadata == %{
                jfif: %{
@@ -1111,7 +1203,7 @@ defmodule ExifTest do
                  density_y: 180,
                  thumbnail_width: 0,
                  thumbnail_height: 0,
-                 thumbnail_data: ""
+                 thumbnail_format: 16
                }
              }
     end
@@ -1132,17 +1224,17 @@ defmodule ExifTest do
                      color_space: 1,
                      user_comment: _user_comment,
                      date_time_original: "2000:11:18 21:14:19",
-                     flash_pix_version: ~c"0100",
+                     flash_pix_version: "0100",
                      flash: 0,
                      metering_mode: 2,
                      exposure_bias_value: {0, 10},
                      compressed_bits_per_pixel: {17, 10},
-                     components_configuration: [1, 2, 3, 0],
+                     components_configuration: <<1, 2, 3, 0>>,
                      date_time_digitized: "2000:11:18 21:14:19",
-                     exif_version: ~c"0210",
+                     exif_version: "0210",
                      iso_speed_ratings: 400,
                      interoperability: %{
-                       interoperability_version: ~c"0100",
+                       interoperability_version: "0100",
                        interoperability_index: "R98"
                      },
                      maker_note: _maker_note,
@@ -1151,7 +1243,7 @@ defmodule ExifTest do
                      max_aperture_value: {3, 1},
                      fnumber: {24, 10},
                      exposure_time: {10, 483},
-                     file_source: 3
+                     file_source: <<3>>
                    },
                    orientation: 1,
                    resolution_unit: 2,
@@ -1168,12 +1260,19 @@ defmodule ExifTest do
                    y_resolution: {72, 1},
                    x_resolution: {72, 1},
                    compression: 6,
-                   thumbnail_data: _thumbnail_data,
-                   jpeg_interchange_format_length: 13234,
-                   jpeg_interchange_format: 1070
+                   thumbnail_data: _thumbnail_data
                  }
                }
              } = metadata
     end
   end
+
+  defp read_metadata(bytes) do
+    {:ok, %Image{metadata: metadata}} = Imagex.decode(bytes)
+    metadata
+  end
+
+  # The encoder adds the compression tag that thumbnails require when the source omitted it.
+  defp drop_compression(nil), do: nil
+  defp drop_compression(exif), do: Map.update(exif, :ifd1, nil, &Map.delete(&1, :compression))
 end
