@@ -22,6 +22,10 @@ defmodule ImagexTest do
       assert String.starts_with?(error_reason, "Not a JPEG file")
     end
 
+    test "rejects CMYK images rather than returning them as RGBA" do
+      assert {:error, "CMYK JPEG images are not supported"} = Imagex.open("test/assets/cmyk.jpg")
+    end
+
     test "encode image rgb image", %{image: test_image} do
       {:ok, compressed_bytes} = Imagex.encode(test_image, :jpeg)
       assert byte_size(compressed_bytes) < Nx.size(test_image.tensor)
@@ -185,6 +189,11 @@ defmodule ImagexTest do
     test "decode image returns :error for bad input" do
       {:error, error_reason} = Imagex.decode(<<0, 1, 2>>, format: :png)
       assert String.starts_with?(error_reason, "invalid png header")
+    end
+
+    test "decode returns an error for truncated data" do
+      png_bytes = File.read!("test/assets/lena.png")
+      assert {:error, _} = Imagex.decode(binary_part(png_bytes, 0, 1000))
     end
 
     test "decode grayscale image" do
@@ -464,6 +473,12 @@ defmodule ImagexTest do
                45663,
                46783
              ]
+    end
+
+    test "decode 10-bit image as full-range 16-bit" do
+      {:ok, %Image{} = image} = Imagex.open("test/assets/jxl/10bit.jxl")
+      assert image.tensor.type == {:u, 16}
+      assert Nx.to_list(image.tensor[[.., 0, 0]]) == [0, 65535]
     end
 
     test "decode official conformance grayscale fixture" do

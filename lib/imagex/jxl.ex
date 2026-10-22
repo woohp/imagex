@@ -30,10 +30,9 @@ defmodule Imagex.Jxl do
   @spec transcode_from_jpeg(binary(), keyword()) ::
           {:ok, binary()} | {:error, String.t() | [atom()]}
   def transcode_from_jpeg(jpeg_bytes, options \\ []) when is_binary(jpeg_bytes) do
-    with {:ok, options} <- Keyword.validate(options, effort: 7, store_jpeg_metadata: 1),
-         effort <- parse_effort(Keyword.get(options, :effort)),
-         store_jpeg_metadata <- parse_boolean(Keyword.get(options, :store_jpeg_metadata)) do
-      Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, effort, store_jpeg_metadata)
+    with {:ok, options} <- Keyword.validate(options, effort: 7, store_jpeg_metadata: true) do
+      effort = parse_effort(Keyword.get(options, :effort))
+      Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, effort, Keyword.get(options, :store_jpeg_metadata))
     end
   end
 
@@ -113,9 +112,6 @@ defmodule Imagex.Jxl do
   def parse_effort(:kitten), do: 8
   def parse_effort(:tortoise), do: 9
 
-  defp parse_boolean(value) when value in [0, false], do: 0
-  defp parse_boolean(value) when value in [1, true], do: 1
-
   defp exif_binary_from_metadata(metadata) do
     case Map.get(metadata, :exif) do
       nil -> {:ok, nil}
@@ -155,15 +151,18 @@ defmodule Imagex.Jxl do
   end
 
   defp xmp_to_jxl_boxes(nil, []), do: {:ok, nil}
-  defp xmp_to_jxl_boxes(nil, boxes), do: {:ok, boxes}
+  defp xmp_to_jxl_boxes(nil, boxes), do: {:ok, Enum.map(boxes, &native_box/1)}
 
   defp xmp_to_jxl_boxes(xmp, boxes) do
     if Enum.any?(boxes, fn {type, _contents} -> type == @xmp_box_type end) do
       {:error, "metadata.xmp cannot be combined with JXL xml boxes in metadata.jxl_boxes"}
     else
-      {:ok, [{@xmp_box_type, xmp} | boxes]}
+      {:ok, Enum.map([{@xmp_box_type, xmp} | boxes], &native_box/1)}
     end
   end
+
+  defp native_box({:xml, contents}), do: {"xml ", contents}
+  defp native_box({:jumb, contents}), do: {"jumb", contents}
 
   defp box_from_metadata(%{type: type, contents: contents} = box) when map_size(box) == 2 do
     with {:ok, type} <- validate_box_type(type),
