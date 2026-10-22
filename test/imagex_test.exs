@@ -937,6 +937,14 @@ defmodule ImagexTest do
       assert image.metadata == nil
     end
 
+    test "TIFF pages decode upright, including transposed orientations" do
+      for orientation <- [2, 6, 7] do
+        {:ok, image} = Imagex.open("test/assets/tiff/orientation-#{orientation}.tif")
+        gray = image.tensor[[.., .., 0]]
+        assert {gray.shape, Nx.to_flat_list(gray)} == @oriented[orientation]
+      end
+    end
+
     test "JXL carries the orientation in the codestream and decodes upright", %{tensor: tensor} do
       image = %Image{tensor: tensor, metadata: %{exif: %{ifd0: %{orientation: 6}}}}
       {:ok, bytes} = Imagex.encode(image, :jxl, lossless: true)
