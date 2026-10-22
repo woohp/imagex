@@ -877,6 +877,54 @@ defmodule ImagexTest do
     assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, -1)
   end
 
+  describe "orientation" do
+    # Expected pixels come from ImageMagick's -auto-orient on the same files.
+    @oriented %{
+      1 => {{2, 3}, [0, 40, 80, 120, 160, 200]},
+      2 => {{2, 3}, [80, 40, 0, 200, 160, 120]},
+      3 => {{2, 3}, [200, 160, 120, 80, 40, 0]},
+      4 => {{2, 3}, [120, 160, 200, 0, 40, 80]},
+      5 => {{3, 2}, [0, 120, 40, 160, 80, 200]},
+      6 => {{3, 2}, [120, 0, 160, 40, 200, 80]},
+      7 => {{3, 2}, [200, 80, 160, 40, 120, 0]},
+      8 => {{3, 2}, [80, 200, 40, 160, 0, 120]}
+    }
+
+    setup do
+      {:ok, tensor: Nx.iota({2, 3}, type: {:u, 8}) |> Nx.multiply(40)}
+    end
+
+    test "orient: true applies the EXIF orientation and resets it", %{tensor: tensor} do
+      for {orientation, {shape, pixels}} <- @oriented do
+        {:ok, bytes} =
+          Imagex.encode(%Image{tensor: tensor, metadata: %{exif: %{ifd0: %{orientation: orientation}}}}, :png)
+
+        {:ok, image} = Imagex.decode(bytes, orient: true)
+        assert {image.tensor.shape, Nx.to_flat_list(image.tensor)} == {shape, pixels}
+        assert image.metadata.exif.ifd0.orientation == 1
+      end
+    end
+
+    test "pixels are left as stored by default", %{tensor: tensor} do
+      {:ok, bytes} = Imagex.encode(%Image{tensor: tensor, metadata: %{exif: %{ifd0: %{orientation: 6}}}}, :png)
+      {:ok, image} = Imagex.decode(bytes)
+      assert image.tensor == tensor
+      assert image.metadata.exif.ifd0.orientation == 6
+
+      {:ok, image} = Imagex.decode(bytes, orient: true, parse_metadata: false)
+      assert image.tensor.shape == {3, 2}
+      assert image.metadata == nil
+    end
+
+    test "JXL carries the orientation in the codestream and decodes upright", %{tensor: tensor} do
+      image = %Image{tensor: tensor, metadata: %{exif: %{ifd0: %{orientation: 6}}}}
+      {:ok, bytes} = Imagex.encode(image, :jxl, lossless: true)
+      {:ok, decoded} = Imagex.decode(bytes)
+      assert {decoded.tensor.shape, Nx.to_flat_list(decoded.tensor)} == @oriented[6]
+      assert decoded.metadata.exif.ifd0.orientation == 1
+    end
+  end
+
   describe "api" do
     @describetag :tmp_dir
 
