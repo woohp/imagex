@@ -534,6 +534,13 @@ defmodule ImagexTest do
       assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
     end
 
+    test "decode skips a malformed Exif box" do
+      {:ok, jxl_bytes} = Imagex.encode(%Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x/>"}}, :jxl)
+      # an Exif box whose TIFF header offset points past its end
+      {:ok, image} = Imagex.decode(jxl_bytes <> <<12::32, "Exif", 99::32>>)
+      assert image.metadata == %{xmp: "<x/>"}
+    end
+
     test "encode rgb image", %{image: test_image} do
       png_bytes = File.read!("test/assets/lena.png")
 

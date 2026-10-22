@@ -219,9 +219,8 @@ defmodule Imagex do
          {:ok, metadata} <- encode_metadata(options[:metadata]),
          {:ok, density} <- jfif_density(metadata[:jfif]) do
       {h, w, c} = dimensions(tensor)
-      exif = fit_app1_segment(metadata.exif, "Exif\0\0")
-      xmp = fit_app1_segment(metadata[:xmp], "http://ns.adobe.com/xap/1.0/\0")
-      Imagex.C.jpeg_compress(Nx.to_binary(tensor), w, h, c, options[:quality], density, exif, xmp)
+      app1_segments = app1_segments([{"Exif\0\0", metadata.exif}, {"http://ns.adobe.com/xap/1.0/\0", metadata[:xmp]}])
+      Imagex.C.jpeg_compress(Nx.to_binary(tensor), w, h, c, options[:quality], density, app1_segments)
     end
   end
 
@@ -263,6 +262,8 @@ defmodule Imagex do
          {:ok, jxl_boxes} <- Imagex.Jxl.boxes_from_metadata(metadata[:jxl_boxes], metadata[:xmp]) do
       {h, w, c} = dimensions(tensor)
       {:u, bit_depth} = tensor.type
+      # A JXL Exif box starts with the offset of the TIFF header within it.
+      jxl_boxes = if metadata.exif, do: [{"Exif", <<0::32, metadata.exif::binary>>} | jxl_boxes], else: jxl_boxes
 
       Imagex.C.jxl_compress(
         Nx.to_binary(tensor),
@@ -270,7 +271,6 @@ defmodule Imagex do
         h,
         c,
         bit_depth,
-        metadata.exif,
         jxl_boxes,
         options[:distance] / 1,
         options[:lossless],
@@ -404,11 +404,11 @@ defmodule Imagex do
   defp exif_orientation(_metadata), do: 1
 
   # A JPEG APP1 segment holds at most 65,533 bytes; larger metadata cannot be stored, so it is dropped.
-  defp fit_app1_segment(payload, identifier)
-       when is_binary(payload) and byte_size(identifier) + byte_size(payload) <= 65_533,
-       do: payload
-
-  defp fit_app1_segment(_payload, _identifier), do: nil
+  defp app1_segments(payloads) do
+    for {identifier, payload} <- payloads,
+        is_binary(payload) and byte_size(identifier) + byte_size(payload) <= 65_533,
+        do: identifier <> payload
+  end
 
   defp jfif_density(%{density_units: units, density_x: x, density_y: y} = jfif) do
     if units in 0..2 and x in 1..65535//1 and y in 1..65535//1 do
