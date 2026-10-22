@@ -179,7 +179,7 @@ yielding<expected<binary, string>> jpeg_compress(
     cinfo.image_width = width;
     cinfo.image_height = height;
     cinfo.input_components = channels;
-    cinfo.in_color_space = JCS_RGB;
+    cinfo.in_color_space = channels == 1 ? JCS_GRAYSCALE : JCS_RGB;
 
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, TRUE);
