@@ -6,9 +6,18 @@ defmodule Imagex.Color do
   @type colorspace :: :L | :LA | :RGB | :RGBA
 
   @doc """
-  Converts a tensor from one colorspace to another.
+  Converts a tensor from one colorspace to another. Grayscale output has shape `{height, width}`.
   """
   def convert(tensor, from, to) do
+    converted = convert_channels(tensor, from, to)
+
+    case {to, converted.shape} do
+      {:L, {height, width, 1}} -> Nx.reshape(converted, {height, width})
+      _ -> converted
+    end
+  end
+
+  defp convert_channels(tensor, from, to) do
     case {from, to} do
       {c, c} ->
         tensor
@@ -67,9 +76,8 @@ defmodule Imagex.Color do
     |> Nx.as_type({:f, 32})
     |> Nx.reshape({height * width, 3})
     |> Nx.dot(weights)
-    |> Nx.round()
     |> Nx.reshape({height, width, 1})
-    |> Nx.as_type(tensor.type)
+    |> as_type(tensor.type)
   end
 
   defp grayscale_alpha_to_rgba(tensor) do
@@ -116,9 +124,12 @@ defmodule Imagex.Color do
     # Since C_bg = 0, C_out = C_src * alpha_src
     color_f
     |> Nx.multiply(alpha_f)
-    |> Nx.round()
-    |> Nx.as_type(tensor.type)
+    |> as_type(tensor.type)
   end
+
+  # Rounds to the nearest value when converting back to an integer type.
+  defp as_type(tensor, {:f, _} = type), do: Nx.as_type(tensor, type)
+  defp as_type(tensor, type), do: tensor |> Nx.round() |> Nx.as_type(type)
 
   defp ensure_3d(tensor) do
     case tensor.shape do
