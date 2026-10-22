@@ -684,6 +684,16 @@ defmodule ImagexTest do
       assert {:ok, %Image{}} = Imagex.decode(jxl_bytes)
     end
 
+    test "transcode reconstructs a JPEG much larger than its JXL" do
+      # zero-filled comments compress well, so the JPEG outgrows the initial output buffer
+      <<0xFF, 0xD8, rest::binary>> = File.read!("test/assets/lena.jpg")
+      comment = <<0xFF, 0xFE, 60_002::16, 0::size(60_000)-unit(8)>>
+      jpeg_bytes = <<0xFF, 0xD8, :binary.copy(comment, 4)::binary, rest::binary>>
+
+      {:ok, jxl_bytes} = Imagex.Jxl.transcode_from_jpeg(jpeg_bytes)
+      assert Imagex.Jxl.transcode_to_jpeg(jxl_bytes) == {:ok, jpeg_bytes}
+    end
+
     test "decode transcoded jpeg image" do
       {:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(File.read!("test/assets/lena-transcode.jxl"))
       assert jpeg_bytes == File.read!("test/assets/lena.jpg")
