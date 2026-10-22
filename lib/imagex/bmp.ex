@@ -1,90 +1,49 @@
 defmodule Imagex.BMP do
+  @moduledoc false
   alias Imagex.Image
 
-  @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
-  def encode(image) when is_struct(image, Nx.Tensor) do
-    {h, w, 3} = Nx.shape(image)
-    total_file_size = 14 + 40 + Nx.size(image)
+  @header_size 14 + 40
 
-    out = <<
-      # bitmap file header
-      "BM",
-      total_file_size::32-little,
-      0::16,
-      0::16,
-      52::32-little,
+  @spec encode(Nx.Tensor.t()) :: {:ok, binary()} | {:error, String.t()}
+  def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, channels}} = image) when channels in [3, 4] do
+    row_size = width * channels
+    padding = stride(row_size) - row_size
+    pixels = image |> swap_red_blue() |> Nx.to_binary()
+    pixels = for <<row::binary-size(^row_size) <- pixels>>, into: <<>>, do: <<row::binary, 0::size(padding)-unit(8)>>
 
-      # DIB header
-      40::32-little,
-      w::32-little,
-      h::32-little,
-      1::16-little,
-      24::16-little,
-      0::32,
-      0::32,
-      2834::32-little,
-      2834::32-little,
-      0::32,
-      0::32,
-
-      # pixels
-      Nx.to_binary(image)
-    >>
-
-    ^total_file_size = byte_size(out)
-    {:ok, out}
+    # A negative height stores the rows top-down.
+    {:ok,
+     <<"BM", @header_size + byte_size(pixels)::32-little, 0::32, @header_size::32-little, 40::32-little,
+       width::32-little, -height::signed-32-little, 1::16-little, channels * 8::16-little, 0::32,
+       byte_size(pixels)::32-little, 2835::32-little, 2835::32-little, 0::32, 0::32, pixels::binary>>}
   end
 
-  @spec decode(binary()) :: {:ok, {Nx.Tensor.t(), map() | nil}} | {:error, String.t()}
+  def encode(_image), do: {:error, "BMP requires unsigned 8-bit RGB or RGBA pixels"}
+
+  @spec decode(binary()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes) do
-    with <<
-           # bitmap file header
-           "BM",
-           _size_of_file::32,
-           _::16,
-           _::16,
-           offset_to_pixels::32-little,
+    with <<"BM", _file_size::32, _reserved::32, offset::32-little, dib_header_size::32-little, width::signed-32-little,
+           height::signed-32-little, 1::16-little, bits_per_pixel::16-little, 0::32, _rest::binary>>
+         when dib_header_size in [40, 124] and bits_per_pixel in [24, 32] and width > 0 and height != 0 <- bytes,
+         channels = div(bits_per_pixel, 8),
+         row_size = width * channels,
+         stride = stride(row_size),
+         pixel_bytes = stride * abs(height),
+         <<_header::binary-size(^offset), pixels::binary-size(^pixel_bytes), _::binary>> <- bytes do
+      pixels = for <<row::binary-size(^stride) <- pixels>>, into: <<>>, do: binary_part(row, 0, row_size)
+      tensor = pixels |> Nx.from_binary({:u, 8}) |> Nx.reshape({abs(height), width, channels}) |> swap_red_blue()
 
-           # DIB header (we only parse a subset of it)
-           dib_header_size::32-little,
-           width::signed-32-little,
-           height::signed-32-little,
-           1::16-little,
-           bits_per_pixel::16-little,
-           0::32,
-
-           # everything else
-           _rest::binary
-         >>
-         when (dib_header_size == 40 or dib_header_size == 124) and bits_per_pixel in [24, 32] <- bytes,
-         <<_header::size(^offset_to_pixels)-bytes, pixels::binary>> <- bytes do
-      channels = div(bits_per_pixel, 8)
-
-      pixels_exploded = for <<pixel::binary-size(^channels) <- pixels>>, do: pixel
-      # convert the pixels to RGB*
-      pixels_exploded = Enum.map(pixels_exploded, &to_rgb/1)
-
-      pixels =
-        if height > 0 do
-          # this is annoying, since windows use positive height to indicate that the image is to be shown bottom-to-top
-          # and so we need to flip the rows
-          pixels_exploded
-          |> Enum.chunk_every(width)
-          |> Enum.reverse()
-          |> List.flatten()
-          |> Enum.join("")
-        else
-          Enum.join(pixels_exploded, "")
-        end
-
-      tensor = Nx.reshape(Nx.from_binary(pixels, {:u, 8}), {abs(height), width, channels})
-      image = %Image{tensor: tensor}
-      {:ok, image}
+      # a positive height means the rows are stored bottom-up
+      tensor = if height > 0, do: Nx.reverse(tensor, axes: [0]), else: tensor
+      {:ok, %Image{tensor: tensor}}
     else
-      error -> {:error, error}
+      _ -> {:error, "invalid or unsupported BMP data"}
     end
   end
 
-  defp to_rgb(<<b, g, r>>), do: <<r, g, b>>
-  defp to_rgb(<<b, g, r, a>>), do: <<r, g, b, a>>
+  # BMP rows are padded to a multiple of 4 bytes.
+  defp stride(row_size), do: div(row_size + 3, 4) * 4
+
+  defp swap_red_blue(%Nx.Tensor{shape: {_, _, 3}} = tensor), do: Nx.take(tensor, Nx.tensor([2, 1, 0]), axis: 2)
+  defp swap_red_blue(%Nx.Tensor{shape: {_, _, 4}} = tensor), do: Nx.take(tensor, Nx.tensor([2, 1, 0, 3]), axis: 2)
 end

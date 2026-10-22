@@ -782,6 +782,15 @@ defmodule ImagexTest do
     assert image.metadata == nil
   end
 
+  test "encode bmp round-trips RGB and RGBA rows that need padding" do
+    for channels <- [3, 4] do
+      tensor = Nx.iota({2, 3, channels}, type: {:u, 8})
+      {:ok, bytes} = Imagex.encode(tensor, :bmp)
+      {:ok, %Image{} = image} = Imagex.decode(bytes)
+      assert image.tensor == tensor
+    end
+  end
+
   test "decode bmp rgba neg height", %{image: test_image} do
     bmp_bytes = File.read!("test/assets/lena-rgba-neg-height.bmp")
     {:ok, %Image{} = image} = Imagex.decode(bmp_bytes, format: :bmp)
