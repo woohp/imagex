@@ -810,6 +810,14 @@ defmodule ImagexTest do
     assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, 2 ** 40)
   end
 
+  test "tiff pages before a broken next-page offset render" do
+    {:ok, tiff} = Imagex.Tiff.load(File.read!("test/assets/tiff/broken-next-page.tif"))
+    assert tiff.num_pages == 1
+
+    {:ok, image} = Imagex.Tiff.render_page(tiff, 0)
+    assert Nx.to_list(image.tensor) == [[[255, 0, 0, 255], [0, 255, 0, 255]], [[0, 0, 255, 255], [255, 255, 255, 255]]]
+  end
+
   describe "orientation" do
     # Expected pixels come from ImageMagick's -auto-orient on the same files.
     @oriented %{

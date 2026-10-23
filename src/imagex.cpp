@@ -881,12 +881,15 @@ struct TIFFWrapper
 {
     TIFF* tiff;
     unique_ptr<stringstream> sstream;
+    // Counted once at load, since recounting rereads any broken directory after the readable ones.
+    int num_pages;
     // libtiff handles are not thread-safe, and pages may be rendered from several processes at once.
     std::mutex mutex;
 
-    TIFFWrapper(TIFF* tiff, unique_ptr<stringstream> sstream) :
+    TIFFWrapper(TIFF* tiff, unique_ptr<stringstream> sstream, int num_pages) :
         tiff(tiff),
-        sstream(std::move(sstream))
+        sstream(std::move(sstream)),
+        num_pages(num_pages)
     {}
 
     ~TIFFWrapper()
@@ -973,7 +976,7 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
         num_pages++;
     } while (TIFFReadDirectory(document));
 
-    return make_tuple(tiff_resource_t::alloc(document, std::move(sstream)), num_pages);
+    return make_tuple(tiff_resource_t::alloc(document, std::move(sstream), num_pages), num_pages);
 }
 
 
@@ -984,8 +987,10 @@ expected<decompress_result_t, string_view> tiff_render_page(
     std::lock_guard lock(wrapper.mutex);
     TIFF* document = wrapper.tiff;
 
-    if (page_index < 0 || page_index >= TIFFNumberOfDirectories(document))
+    if (page_index < 0 || page_index >= wrapper.num_pages)
         return std::unexpected("page index out of range");
+    // A failed read, such as of a broken directory at load, leaves the stream failing every later read.
+    wrapper.sstream->clear();
     if (!TIFFSetDirectory(document, page_index))
         return std::unexpected("failed to set TIFF directory");
 
