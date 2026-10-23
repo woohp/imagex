@@ -21,6 +21,31 @@ defmodule ImagexTest do
       assert String.starts_with?(error_reason, "Not a JPEG file")
     end
 
+    test "decode returns an error for truncated data, but accepts a missing EOI marker" do
+      jpeg_bytes = File.read!("test/assets/lena.jpg")
+
+      assert {:error, "Corrupt JPEG data: premature end of data segment"} =
+               Imagex.decode(binary_part(jpeg_bytes, 0, byte_size(jpeg_bytes) - 1000))
+
+      assert {:ok, _image} = Imagex.decode(binary_part(jpeg_bytes, 0, byte_size(jpeg_bytes) - 2))
+    end
+
+    test "decode returns an error for truncated arithmetic-coded data" do
+      jpeg_bytes = File.read!("test/assets/arithmetic.jpg")
+      assert {:ok, _image} = Imagex.decode(jpeg_bytes)
+
+      assert {:error, "Premature end of JPEG file"} =
+               Imagex.decode(binary_part(jpeg_bytes, 0, byte_size(jpeg_bytes) - 100))
+    end
+
+    test "decode drops a JFIF density that cannot be written back" do
+      # lena.jpg with density units 0 and zero densities, as seen in files in the wild
+      <<head::binary-size(13), _density::binary-size(5), rest::binary>> = File.read!("test/assets/lena.jpg")
+      {:ok, image} = Imagex.decode(<<head::binary, 0, 0::16, 0::16, rest::binary>>)
+      refute Map.has_key?(image.metadata.jfif, :density_units)
+      assert {:ok, _bytes} = Imagex.encode(image, :jpeg)
+    end
+
     test "rejects CMYK images rather than returning them as RGBA" do
       assert {:error, "CMYK JPEG images are not supported"} = Imagex.open("test/assets/cmyk.jpg")
     end
