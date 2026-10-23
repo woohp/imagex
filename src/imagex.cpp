@@ -423,25 +423,10 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
     optional<vector<uint8_t>> exif,
     text_chunks_t text_chunks)
 {
-    int color_type;
-    switch (channels)
-    {
-    case 1:
-        color_type = PNG_COLOR_TYPE_GRAY;
-        break;
-    case 2:
-        color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
-        break;
-    case 3:
-        color_type = PNG_COLOR_TYPE_RGB;
-        break;
-    case 4:
-        color_type = PNG_COLOR_TYPE_RGB_ALPHA;
-        break;
-    default:
-        co_yield std::unexpected("unsupported number of channels (must be 1-4)");
-        co_return;
-    }
+    // Channel counts are 1-4, checked in Elixir.
+    constexpr int color_types[] = {
+        PNG_COLOR_TYPE_GRAY, PNG_COLOR_TYPE_GRAY_ALPHA, PNG_COLOR_TYPE_RGB, PNG_COLOR_TYPE_RGB_ALPHA
+    };
 
     png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, png_error_exit, nullptr);
     if (!png_ptr)
@@ -472,7 +457,7 @@ yielding<expected<vector<png_byte>, string_view>> png_compress(
         width,
         height,
         bit_depth,
-        color_type,
+        color_types[channels - 1],
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_BASE,
         PNG_FILTER_TYPE_BASE);
@@ -769,9 +754,6 @@ expected<vector<uint8_t>, string_view> jxl_compress(
 
     for (const auto& [box_type, box_contents] : jxl_boxes)
     {
-        if (box_type.size() != 4)
-            return std::unexpected("JXL box types must be 4 bytes");
-
         JXL_ENSURE_SUCCESS(
             JxlEncoderAddBox, enc.get(), box_type.data(), box_contents.data, box_contents.size, JXL_FALSE);
     }
@@ -960,6 +942,8 @@ expected<decompress_result_t, string_view> tiff_render_page(
     std::lock_guard lock(wrapper.mutex);
     TIFF* document = wrapper.tiff;
 
+    if (page_index < 0 || page_index >= static_cast<int>(TIFFNumberOfDirectories(document)))
+        return std::unexpected("page index out of range");
     if (!TIFFSetDirectory(document, page_index))
         return std::unexpected("failed to set TIFF directory");
 
