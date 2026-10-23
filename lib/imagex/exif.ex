@@ -266,7 +266,9 @@ defmodule Imagex.Exif do
       is_integer(offset) and is_integer(length) and offset >= 0 and length >= 0 and offset + length <= byte_size(data)
     end
 
+    # Strips may overlap, so their total is also bounded, or a small block could repeat itself into a huge thumbnail.
     with true <- strips != [] and Enum.all?(strips, in_bounds?),
+         true <- Enum.sum_by(strips, &elem(&1, 1)) <= byte_size(data),
          thumbnail_data = Enum.map_join(strips, fn {offset, length} -> binary_part(data, offset, length) end),
          thumbnail_ifd = Map.put(ifd, :thumbnail_data, thumbnail_data),
          {:ok, _normalized} <- normalize_thumbnail_ifd(thumbnail_ifd, :ifd1) do
