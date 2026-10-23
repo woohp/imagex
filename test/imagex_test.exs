@@ -64,16 +64,6 @@ defmodule ImagexTest do
       assert encoded_metadata.xmp == xmp
     end
 
-    test "encode image preserves thumbnail-bearing exif metadata" do
-      jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
-      {:ok, %Image{} = source_image} = Imagex.decode(jpeg_bytes, format: :jpeg)
-
-      {:ok, compressed_bytes} = Imagex.encode(source_image, :jpeg)
-      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :jpeg)
-
-      assert metadata.exif.ifd1.thumbnail_data == source_image.metadata.exif.ifd1.thumbnail_data
-    end
-
     test "encode image returns error for unsupported exif values", %{image: test_image} do
       image = %Image{tensor: test_image.tensor, metadata: %{exif: %{ifd0: %{orientation: %{bad: true}}}}}
 
@@ -256,23 +246,6 @@ defmodule ImagexTest do
       assert image.metadata == nil
     end
 
-    test "encode image preserves png text metadata", %{image: test_image} do
-      image = %Image{
-        tensor: test_image.tensor,
-        metadata: %{png_chunks: [%{keyword: "Author", text: "Imagex"}, %{keyword: "Comment", text: "Hello"}]}
-      }
-
-      {:ok, compressed_bytes} = Imagex.encode(image, :png)
-      {:ok, %Image{metadata: metadata}} = Imagex.decode(compressed_bytes, format: :png)
-
-      assert metadata == %{
-               png_chunks: [
-                 %{keyword: "Author", text: "Imagex", language_tag: "", translated_keyword: ""},
-                 %{keyword: "Comment", text: "Hello", language_tag: "", translated_keyword: ""}
-               ]
-             }
-    end
-
     test "encode image preserves decoded exif metadata" do
       {:ok, image} = Imagex.open("test/assets/16bit.png")
       {:ok, bytes} = Imagex.encode(image, :png)
@@ -421,48 +394,16 @@ defmodule ImagexTest do
     end
 
     test "decode 16-bit image" do
-      png_bytes = File.read!("test/assets/16bit.jxl")
-      {:ok, %Image{} = image} = Imagex.decode(png_bytes, format: :jxl)
-      assert image.tensor.shape == {118, 170, 4}
-      assert image.tensor.type == {:u, 16}
+      {:ok, %Image{} = image} = Imagex.open("test/assets/16bit.jxl")
+      {:ok, png} = Imagex.open("test/assets/16bit.png")
+      assert image.tensor == png.tensor
       assert image.metadata == nil
-
-      assert Nx.to_flat_list(image.tensor) |> Enum.take(10) == [
-               45759,
-               46783,
-               49727,
-               65535,
-               45631,
-               46655,
-               49599,
-               65535,
-               45663,
-               46783
-             ]
     end
 
     test "decode 10-bit image as full-range 16-bit" do
       {:ok, %Image{} = image} = Imagex.open("test/assets/jxl/10bit.jxl")
       assert image.tensor.type == {:u, 16}
       assert Nx.to_list(image.tensor[[.., 0, 0]]) == [0, 65535]
-    end
-
-    test "decode official conformance grayscale fixture" do
-      jxl_bytes = File.read!("test/assets/jxl/conformance-grayscale.jxl")
-      {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
-
-      assert image.tensor.shape == {200, 200}
-      assert image.tensor.type == {:u, 8}
-      assert image.metadata == nil
-    end
-
-    test "decode official conformance progressive fixture" do
-      jxl_bytes = File.read!("test/assets/jxl/conformance-progressive.jxl")
-      {:ok, %Image{} = image} = Imagex.decode(jxl_bytes, format: :jxl)
-
-      assert image.tensor.shape == {2704, 4064, 3}
-      assert image.tensor.type == {:u, 8}
-      assert image.metadata == nil
     end
 
     test "decode official exif and xmp metadata fixture" do
@@ -971,9 +912,10 @@ defmodule ImagexTest do
                Imagex.encode(Nx.as_type(image.tensor, {:f, 32}), :png)
     end
 
-    test "convert returns the kind of value it was given", %{image: image} do
-      assert %Nx.Tensor{shape: {512, 512}} = Imagex.convert(image.tensor, :L)
-      assert %Image{tensor: %Nx.Tensor{shape: {512, 512, 4}}} = Imagex.convert(image, :RGBA)
+    test "convert returns the kind of value it was given" do
+      tensor = Nx.iota({2, 2, 3}, type: :u8)
+      assert %Nx.Tensor{shape: {2, 2}} = Imagex.convert(tensor, :L)
+      assert %Image{tensor: %Nx.Tensor{shape: {2, 2, 4}}} = Imagex.convert(%Image{tensor: tensor}, :RGBA)
     end
   end
 

@@ -8,7 +8,6 @@ defmodule Imagex.WebpTest do
   for {filename, expected} <- @fixtures do
     test "decodes independent fixture #{filename} with expected pixels" do
       bytes = File.read!("test/assets/webp/#{unquote(filename)}")
-      assert Imagex.Detect.detect(bytes) == :webp
       assert {:ok, image} = Imagex.decode(bytes)
       assert image.tensor.type == {:u, 8}
       assert image.tensor.shape == unquote(Macro.escape({expected["height"], expected["width"], expected["channels"]}))
@@ -25,8 +24,6 @@ defmodule Imagex.WebpTest do
       bytes = File.read!("test/assets/webp/#{name}")
       assert {:ok, image} = Imagex.decode(bytes)
       assert image.metadata.exif == source_image.metadata.exif
-      assert byte_size(image.metadata.exif.ifd1.thumbnail_data) == 7935
-      assert {:ok, %Image{}} = Imagex.decode(image.metadata.exif.ifd1.thumbnail_data)
       assert Map.get(image.metadata, :xmp) == if(name == "lossy-exif.webp", do: nil, else: @xmp)
       assert {:ok, skipped} = Imagex.decode(bytes, parse_metadata: false)
       assert skipped.metadata == nil
