@@ -692,6 +692,13 @@ defmodule ImagexTest do
       assert Imagex.Jxl.transcode_to_jpeg(jxl_bytes) == {:ok, jpeg_bytes}
     end
 
+    test "transcode checks max_pixels both ways" do
+      error = {:error, "image has more pixels than max_pixels allows"}
+      assert Imagex.Jxl.transcode_from_jpeg(File.read!("test/assets/lena.jpg"), max_pixels: 1000) == error
+      assert Imagex.Jxl.transcode_to_jpeg(File.read!("test/assets/lena-transcode.jxl"), max_pixels: 1000) == error
+      assert {:error, "Not a JPEG file" <> _} = Imagex.Jxl.transcode_from_jpeg("not a jpeg")
+    end
+
     test "decode transcoded jpeg image" do
       {:ok, jpeg_bytes} = Imagex.Jxl.transcode_to_jpeg(File.read!("test/assets/lena-transcode.jxl"))
       assert jpeg_bytes == File.read!("test/assets/lena.jpg")
