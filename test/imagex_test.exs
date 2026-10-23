@@ -755,6 +755,11 @@ defmodule ImagexTest do
     end
   end
 
+  test "decode bmp returns an error when the pixels would overlap the header" do
+    {:ok, <<head::binary-size(10), _offset::32, rest::binary>>} = Imagex.encode(Nx.iota({1, 1, 3}, type: :u8), :bmp)
+    assert {:error, _} = Imagex.decode(<<head::binary, 0::32, rest::binary>>)
+  end
+
   test "decode bmp rgba neg height", %{image: test_image} do
     bmp_bytes = File.read!("test/assets/lena-rgba-neg-height.bmp")
     {:ok, %Image{} = image} = Imagex.decode(bmp_bytes, format: :bmp)
