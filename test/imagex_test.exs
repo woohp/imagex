@@ -25,6 +25,21 @@ defmodule ImagexTest do
       assert {:error, "CMYK JPEG images are not supported"} = Imagex.open("test/assets/cmyk.jpg")
     end
 
+    test "killing an encode mid-call frees the output buffer once" do
+      tensor = :crypto.strong_rand_bytes(1500 * 1500 * 3) |> Nx.from_binary(:u8) |> Nx.reshape({1500, 1500, 3})
+
+      # Each encode takes about 15 ms, so some kills land after libjpeg has grown its output buffer. A double
+      # free would abort the VM.
+      for delay <- 1..10 do
+        pid = spawn(fn -> Imagex.encode(tensor, :jpeg, quality: 95) end)
+        Process.sleep(delay)
+        Process.exit(pid, :kill)
+      end
+
+      :erlang.garbage_collect()
+      assert {:ok, _bytes} = Imagex.encode(tensor, :jpeg)
+    end
+
     test "encode grayscale image" do
       tensor = Nx.iota({8, 8}, type: {:u, 8})
       {:ok, bytes} = Imagex.encode(tensor, :jpeg)

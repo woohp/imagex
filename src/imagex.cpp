@@ -91,6 +91,20 @@ struct jpeg_guard
 };
 
 
+// Frees the buffer jpeg_mem_dest mallocs when the scope exits, including when the encode is abandoned or fails.
+// libjpeg replaces the buffer as it grows and only writes the current one back in term_destination.
+struct jpeg_mem_dest_guard
+{
+    jpeg_compress_struct& cinfo;
+    uint8_t*& buf;
+    ~jpeg_mem_dest_guard()
+    {
+        cinfo.dest->term_destination(&cinfo);
+        free(buf);
+    }
+};
+
+
 void jpeg_error_exit(j_common_ptr cinfo)
 {
     char error_message[JMSG_LENGTH_MAX];
@@ -186,11 +200,10 @@ yielding<expected<binary, string>> jpeg_compress(
     jpeg_create_compress(&cinfo);
     jpeg_guard guard{reinterpret_cast<j_common_ptr>(&cinfo)};
 
-    // jpeg_mem_dest mallocs the output buffer; the caller frees it, including on error.
     uint8_t* buf = nullptr;
     unsigned long outsize = 0;
-    std::unique_ptr<uint8_t*, decltype([](uint8_t** p) { free(*p); })> buf_guard(&buf);
     jpeg_mem_dest(&cinfo, &buf, &outsize);
+    jpeg_mem_dest_guard buf_guard{cinfo, buf};
 
     cinfo.image_width = width;
     cinfo.image_height = height;
