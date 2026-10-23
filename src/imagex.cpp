@@ -44,7 +44,7 @@ struct decompress_result_t
     uint32_t channels;
     uint32_t bit_depth;
     optional<binary> exif;
-    text_chunks_t text_chunks;
+    vector<pair<string, binary>> text_chunks;
     std::vector<binary> xml_boxes;
     std::vector<binary> jumb_boxes;
 };
@@ -65,7 +65,7 @@ struct type_cast<decompress_result_t>
             type_cast<uint32_t>::to_term(env, result.channels),
             type_cast<uint32_t>::to_term(env, result.bit_depth),
             type_cast<optional<binary>>::to_term(env, result.exif),
-            type_cast<text_chunks_t>::to_term(env, result.text_chunks),
+            type_cast<vector<pair<string, binary>>>::to_term(env, result.text_chunks),
             type_cast<std::vector<binary>>::to_term(env, result.xml_boxes),
             type_cast<std::vector<binary>>::to_term(env, result.jumb_boxes));
     }
@@ -299,24 +299,6 @@ struct png_write_guard
 };
 
 
-// tEXt and zTXt text is Latin-1, while iTXt text, and metadata in general, is UTF-8.
-static string latin1_to_utf8(string_view latin1)
-{
-    string utf8;
-    for (const unsigned char c : latin1)
-    {
-        if (c < 0x80)
-            utf8 += static_cast<char>(c);
-        else
-        {
-            utf8 += static_cast<char>(0xC0 | c >> 6);
-            utf8 += static_cast<char>(0x80 | (c & 0x3F));
-        }
-    }
-    return utf8;
-}
-
-
 yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes, uint64_t max_pixels)
 {
     // check png signature
@@ -351,6 +333,12 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
             data_wrapper->read(png_ptr, dest, size_to_read);
         });
     png_set_sig_bytes(png_ptr, 8);
+    // Text chunks are returned raw and parsed in Elixir, which caps how much compressed text is inflated. A raw chunk
+    // cannot be larger than the file, so allow that beyond libpng's 8 MB, which uncompressed text written back from a
+    // larger decoded text could exceed.
+    static constexpr png_byte text_chunk_names[] = "tEXt\0zTXt\0iTXt";
+    png_set_keep_unknown_chunks(png_ptr, PNG_HANDLE_CHUNK_ALWAYS, text_chunk_names, 3);
+    png_set_chunk_malloc_max(png_ptr, std::max<size_t>(png_bytes.size(), 8'000'000));
     png_read_info(png_ptr, info_ptr);
 
     const png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
@@ -431,22 +419,13 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         }
     }
 
-    // read tEXt/iTxt/zTXt data
-    text_chunks_t text_data;
+    vector<pair<string, binary>> text_chunks;
     {
-        png_textp text_ptr = nullptr;
-        const int num_text = png_get_text(png_ptr, info_ptr, &text_ptr, nullptr);
-        for (int i = 0; i < num_text; i++)
-        {
-            const png_text& text = text_ptr[i];
-            const bool is_itxt =
-                text.compression == PNG_ITXT_COMPRESSION_NONE || text.compression == PNG_ITXT_COMPRESSION_zTXt;
-            text_data.emplace_back(
-                text.key,
-                is_itxt ? string(text.text, text.itxt_length) : latin1_to_utf8({text.text, text.text_length}),
-                text.lang != nullptr ? text.lang : "",
-                text.lang_key != nullptr ? text.lang_key : "");
-        }
+        png_unknown_chunkp chunks = nullptr;
+        const int num_chunks = png_get_unknown_chunks(png_ptr, info_ptr, &chunks);
+        for (int i = 0; i < num_chunks; i++)
+            text_chunks.emplace_back(
+                reinterpret_cast<const char*>(chunks[i].name), binary::from_bytes(chunks[i].data, chunks[i].size));
     }
 
     co_yield decompress_result_t{
@@ -456,7 +435,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         .channels = channels,
         .bit_depth = bit_depth,
         .exif = std::move(exif_data),
-        .text_chunks = std::move(text_data),
+        .text_chunks = std::move(text_chunks),
     };
 }
 
