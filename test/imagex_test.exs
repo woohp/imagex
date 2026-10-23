@@ -436,6 +436,31 @@ defmodule ImagexTest do
       assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
     end
 
+    test "decode rejects metadata boxes that expand past the limit" do
+      {:ok, jxl_bytes} = Imagex.encode(%Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x/>"}}, :jxl)
+      # brob boxes holding xml boxes compressed from 32 MiB of zeros, and from 60,000 zeros
+      box = fn zeros -> <<12 + byte_size(zeros)::32, "brob", "xml ", zeros::binary>> end
+      large_box = box.(Base.decode64!("z///f/gnAOKxQCD3/p/////wTwDEYQGA7v3/"))
+      small_box = box.(Base.decode64!("H1/q+CcA4rFAIEMcAA=="))
+
+      assert Imagex.decode(jxl_bytes <> large_box) == {:error, "JXL metadata boxes are too large"}
+      assert Imagex.decode(jxl_bytes <> :binary.copy(small_box, 300)) == {:error, "JXL metadata boxes are too large"}
+      assert {:ok, _image} = Imagex.decode(jxl_bytes <> :binary.copy(small_box, 200))
+    end
+
+    test "decode keeps alpha and drops other extra channels" do
+      # RGB with alpha 50-57 and a depth channel
+      {:ok, image} = Imagex.open("test/assets/jxl/rgb-alpha-depth.jxl")
+      assert image.tensor.shape == {2, 4, 4}
+      assert Nx.to_flat_list(image.tensor[[.., .., 3]]) == Enum.to_list(50..57)
+    end
+
+    test "decode returns straight alpha for premultiplied images" do
+      # stored premultiplied as (100, 50, 25, 128) and (200, 100, 50, 255)
+      {:ok, image} = Imagex.open("test/assets/jxl/premultiplied.jxl")
+      assert Nx.to_flat_list(image.tensor) == [199, 100, 49, 128, 200, 100, 50, 255]
+    end
+
     test "decode skips a malformed Exif box" do
       {:ok, jxl_bytes} = Imagex.encode(%Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x/>"}}, :jxl)
       # an Exif box whose TIFF header offset points past its end

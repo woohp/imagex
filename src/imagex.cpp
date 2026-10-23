@@ -623,6 +623,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
     JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE | JXL_DEC_BOX);
     JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
     JXL_ENSURE_SUCCESS(JxlDecoderSetDecompressBoxes, dec.get(), JXL_TRUE);
+    JXL_ENSURE_SUCCESS(JxlDecoderSetUnpremultiplyAlpha, dec.get(), JXL_TRUE);
     JXL_ENSURE_SUCCESS(JxlDecoderSetInput, dec.get(), jxl_bytes.data, jxl_bytes.size);
     JxlDecoderCloseInput(dec.get());
 
@@ -630,12 +631,18 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
     const constexpr size_t chunk_size = 0xffff;
     string box_type;  // type of the metadata box being collected, empty if none
     vector<uint8_t> box_data;
+    // libjxl decompresses brob boxes, so a small file could otherwise expand into huge metadata.
+    const size_t max_box_bytes = (16 << 20) + jxl_bytes.size;
+    constexpr string_view boxes_too_large = "JXL metadata boxes are too large";
+    size_t box_bytes = 0;  // collected from finished boxes
 
+    // Returns false if the boxes collected so far exceed the cap.
     auto finish_box = [&]() {
         if (box_type.empty())
-            return;
+            return true;
 
         box_data.resize(box_data.size() - JxlDecoderReleaseBoxBuffer(dec.get()));
+        box_bytes += box_data.size();
         if (box_type == "Exif")
         {
             // A malformed Exif box is skipped, like malformed EXIF data.
@@ -649,6 +656,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
 
         box_type.clear();
+        return box_bytes <= max_box_bytes;
     };
 
     for (;;)
@@ -679,7 +687,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
                 runner.get(), JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize));
             result.width = info.xsize;
             result.height = info.ysize;
-            result.channels = info.num_color_channels + info.num_extra_channels;
+            // Only alpha is interleaved with the color channels; other extra channels, like depth, are dropped.
+            result.channels = info.num_color_channels + (info.alpha_bits > 0 ? 1 : 0);
             // libjxl scales other integer depths (e.g. 10 or 12 bits) to the full output range.
             result.bit_depth = info.bits_per_sample <= 8 ? 8 : 16;
         }
@@ -698,7 +707,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_BOX)
         {
-            finish_box();
+            if (!finish_box())
+                return std::unexpected(boxes_too_large);
 
             JxlBoxType type;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), type, JXL_TRUE);
@@ -714,7 +724,10 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         {
             const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
             const size_t output_pos = box_data.size() - remaining;
-            box_data.resize(box_data.size() + chunk_size);
+            const size_t budget = max_box_bytes - box_bytes;
+            if (box_data.size() >= budget)
+                return std::unexpected(boxes_too_large);
+            box_data.resize(std::min(box_data.size() + chunk_size, budget));
             JXL_ENSURE_SUCCESS(
                 JxlDecoderSetBoxBuffer, dec.get(), box_data.data() + output_pos, box_data.size() - output_pos);
         }
@@ -725,7 +738,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_SUCCESS)
         {
-            finish_box();
+            if (!finish_box())
+                return std::unexpected(boxes_too_large);
             return result;
         }
         else
