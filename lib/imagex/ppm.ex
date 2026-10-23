@@ -15,9 +15,11 @@ defmodule Imagex.PPM do
   @spec decode(binary()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes) do
     with <<"P", n, "\n", rest::binary>> when n == ?5 or n == ?6 <- bytes,
-         [width, height, _max_value, pixels] <- String.split(rest, [" ", "\n"], parts: 4),
+         [width, height, max_value, pixels] <- String.split(rest, [" ", "\n"], parts: 4),
          {width, ""} when width > 0 <- Integer.parse(width),
-         {height, ""} when height > 0 <- Integer.parse(height) do
+         {height, ""} when height > 0 <- Integer.parse(height),
+         # Only 8-bit samples spanning 0-255, as the encoder writes, are supported.
+         {255, ""} <- Integer.parse(max_value) do
       {shape, channels} =
         if n == ?5 do
           {{height, width}, 1}
