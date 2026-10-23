@@ -1055,6 +1055,12 @@ defmodule ImagexTest do
       end
     end
 
+    test "convert raises for types other than u8, u16 and f16-f64" do
+      for type <- [:u32, :s16, :u64, :bf16] do
+        assert_raise ArgumentError, fn -> Imagex.convert(Nx.iota({1, 1, 3}, type: type), :L) end
+      end
+    end
+
     test "convert returns the kind of value it was given" do
       tensor = Nx.iota({2, 2, 3}, type: :u8)
       assert %Nx.Tensor{shape: {2, 2}} = Imagex.convert(tensor, :L)

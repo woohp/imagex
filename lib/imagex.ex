@@ -337,12 +337,17 @@ defmodule Imagex do
   Converts an image to another colorspace, returning the same kind of value it was given.
 
   The source colorspace is inferred from the channel count. Removing alpha composites onto black, and
-  grayscale results have shape `{height, width}`.
+  grayscale results have shape `{height, width}`. Pixels must be u8, u16, f16, f32 or f64.
   """
   @spec convert(image(), colorspace()) :: image()
   def convert(%Image{tensor: tensor} = image, colorspace), do: %{image | tensor: convert(tensor, colorspace)}
 
   def convert(%Nx.Tensor{} = tensor, colorspace) when colorspace in [:L, :LA, :RGB, :RGBA] do
+    # The arithmetic is in f32, which cannot hold wider integers' full range.
+    unless tensor.type in [u: 8, u: 16, f: 16, f: 32, f: 64] do
+      raise ArgumentError, "expected a u8, u16, f16, f32 or f64 tensor, got: #{Nx.Type.to_string(tensor.type)}"
+    end
+
     from_colorspace =
       case dimensions(tensor) do
         {_h, _w, 1} -> :L
