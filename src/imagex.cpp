@@ -875,7 +875,7 @@ expected<tuple<pdf_resource_t, int>, string_view> pdf_load_document(binary bytes
 
 
 expected<decompress_result_t, string_view> pdf_render_page(
-    pdf_resource_t document_resource, int page_idx, int dpi, uint64_t max_pixels)
+    pdf_resource_t document_resource, int64_t page_idx, int dpi, uint64_t max_pixels)
 {
     auto& document = document_resource.get();
     if (page_idx < 0 || page_idx >= document->pages())
@@ -936,13 +936,13 @@ expected<tuple<tiff_resource_t, int>, string_view> tiff_load_document(binary byt
 
 
 expected<decompress_result_t, string_view> tiff_render_page(
-    tiff_resource_t document_resource, int page_index, uint64_t max_pixels)
+    tiff_resource_t document_resource, int64_t page_index, uint64_t max_pixels)
 {
     auto& wrapper = document_resource.get();
     std::lock_guard lock(wrapper.mutex);
     TIFF* document = wrapper.tiff;
 
-    if (page_index < 0 || page_index >= static_cast<int>(TIFFNumberOfDirectories(document)))
+    if (page_index < 0 || page_index >= TIFFNumberOfDirectories(document))
         return std::unexpected("page index out of range");
     if (!TIFFSetDirectory(document, page_index))
         return std::unexpected("failed to set TIFF directory");
