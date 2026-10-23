@@ -39,4 +39,8 @@ defmodule DetectorTest do
   test "detect garbage" do
     assert Imagex.Detect.detect("some random string") == nil
   end
+
+  test "decoding an unrecognized format returns an error" do
+    assert Imagex.decode(<<0, 1, 2>>) == {:error, "unrecognized image format"}
+  end
 end
