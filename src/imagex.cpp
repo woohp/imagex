@@ -807,8 +807,23 @@ expected<vector<uint8_t>, string_view> jxl_compress(
 
 
 expected<vector<uint8_t>, string_view> jxl_transcode_from_jpeg(
-    const binary& jpeg_bytes, int effort, bool store_jpeg_metadata)
+    const binary& jpeg_bytes, int effort, bool store_jpeg_metadata, uint64_t max_pixels)
 {
+    // libjxl allocates for the whole image, so check the size the JPEG header declares first.
+    {
+        struct jpeg_error_mgr err;
+        struct jpeg_decompress_struct cinfo;
+        cinfo.err = jpeg_std_error(&err);
+        err.error_exit = jpeg_error_exit;
+        err.emit_message = [](j_common_ptr, int) {};
+        jpeg_create_decompress(&cinfo);
+        jpeg_guard guard{reinterpret_cast<j_common_ptr>(&cinfo)};
+        jpeg_mem_src(&cinfo, jpeg_bytes.data, jpeg_bytes.size);
+        jpeg_read_header(&cinfo, TRUE);
+        if (exceeds_max_pixels(cinfo.image_width, cinfo.image_height, max_pixels))
+            return std::unexpected(MAX_PIXELS_ERROR);
+    }
+
     auto enc = JxlEncoderMake(/*memory_manager=*/nullptr);
 
     JXL_ENSURE_SUCCESS(JxlEncoderUseContainer, enc.get(), JXL_TRUE);
@@ -823,10 +838,13 @@ expected<vector<uint8_t>, string_view> jxl_transcode_from_jpeg(
 }
 
 
-expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_bytes)
+expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_bytes, uint64_t max_pixels)
 {
     auto dec = JxlDecoderMake(nullptr);
-    JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_FULL_IMAGE | JXL_DEC_JPEG_RECONSTRUCTION);
+    JXL_ENSURE_SUCCESS(
+        JxlDecoderSubscribeEvents,
+        dec.get(),
+        JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE | JXL_DEC_JPEG_RECONSTRUCTION);
 
     JxlDecoderSetInput(dec.get(), jxl_bytes.data, jxl_bytes.size);
 
@@ -843,6 +861,13 @@ expected<vector<uint8_t>, string_view> jxl_transcode_to_jpeg(const binary& jxl_b
         else if (status == JXL_DEC_NEED_MORE_INPUT)
         {
             return std::unexpected("Error, already provided all input");
+        }
+        else if (status == JXL_DEC_BASIC_INFO)
+        {
+            JxlBasicInfo info;
+            JXL_ENSURE_SUCCESS(JxlDecoderGetBasicInfo, dec.get(), &info);
+            if (exceeds_max_pixels(info.xsize, info.ysize, max_pixels))
+                return std::unexpected(MAX_PIXELS_ERROR);
         }
         else if (status == JXL_DEC_JPEG_RECONSTRUCTION)
         {

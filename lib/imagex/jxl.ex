@@ -13,10 +13,14 @@ defmodule Imagex.Jxl do
     * `:effort` - encoder effort, 1-9 (default 7).
     * `:store_jpeg_metadata` - whether to keep the data needed to reconstruct the original JPEG file
       (default `true`).
+    * `:max_pixels` - as for `Imagex.decode/2`.
   """
   @spec transcode_from_jpeg(binary(), keyword()) :: {:ok, binary()} | {:error, String.t()}
   def transcode_from_jpeg(jpeg_bytes, options \\ []) when is_binary(jpeg_bytes) do
-    options = Keyword.validate!(options, effort: 7, store_jpeg_metadata: true)
+    options =
+      Keyword.validate!(options, effort: 7, store_jpeg_metadata: true, max_pixels: Imagex.Image.default_max_pixels())
+
+    max_pixels = Imagex.Image.native_max_pixels(options[:max_pixels])
 
     unless is_integer(options[:effort]) and options[:effort] in 1..9 do
       raise ArgumentError, "expected :effort to be an integer between 1 and 9, got: #{inspect(options[:effort])}"
@@ -27,15 +31,20 @@ defmodule Imagex.Jxl do
             "expected :store_jpeg_metadata to be a boolean, got: #{inspect(options[:store_jpeg_metadata])}"
     end
 
-    Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, options[:effort], options[:store_jpeg_metadata])
+    Imagex.C.jxl_transcode_from_jpeg(jpeg_bytes, options[:effort], options[:store_jpeg_metadata], max_pixels)
   end
 
   @doc """
   Reconstructs the original JPEG from a JXL produced by `transcode_from_jpeg/2`.
+
+  Options:
+
+    * `:max_pixels` - as for `Imagex.decode/2`.
   """
-  @spec transcode_to_jpeg(binary()) :: {:ok, binary()} | {:error, String.t()}
-  def transcode_to_jpeg(jxl_bytes) when is_binary(jxl_bytes) do
-    Imagex.C.jxl_transcode_to_jpeg(jxl_bytes)
+  @spec transcode_to_jpeg(binary(), keyword()) :: {:ok, binary()} | {:error, String.t()}
+  def transcode_to_jpeg(jxl_bytes, options \\ []) when is_binary(jxl_bytes) do
+    options = Keyword.validate!(options, max_pixels: Imagex.Image.default_max_pixels())
+    Imagex.C.jxl_transcode_to_jpeg(jxl_bytes, Imagex.Image.native_max_pixels(options[:max_pixels]))
   end
 
   # A single xml box is surfaced as metadata.xmp instead of a jxl_boxes entry, so it is stored once.
