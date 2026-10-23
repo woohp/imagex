@@ -810,6 +810,15 @@ defmodule ImagexTest do
     assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, 2 ** 40)
   end
 
+  test "decode tiff checks max_pixels against the tile size too" do
+    # a 1x1 image stored in a 16x16 tile
+    assert {:error, "image has more pixels than max_pixels allows"} =
+             Imagex.open("test/assets/tiff/large-tile.tif", max_pixels: 100)
+
+    assert {:ok, %Image{tensor: tensor}} = Imagex.open("test/assets/tiff/large-tile.tif", max_pixels: 256)
+    assert Nx.to_list(tensor) == [[[10, 20, 30, 255]]]
+  end
+
   test "decode tiff returns an error for a corrupt strip" do
     assert {:error, "failed to read TIFF image"} = Imagex.open("test/assets/tiff/corrupt-strip.tif")
   end
