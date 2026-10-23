@@ -500,6 +500,15 @@ defmodule ImagexTest do
       assert length(boxes) == 201
     end
 
+    test "decode drops malformed metadata boxes" do
+      {:ok, jxl_bytes} = Imagex.encode(%Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x/>"}}, :jxl)
+      {:ok, %Image{tensor: tensor}} = Imagex.decode(jxl_bytes)
+
+      for corrupt_box <- [<<19::32, "brob", "xml ", "garbage">>, <<10::32, "brob", "xm">>, "garbage!"] do
+        assert {:ok, %Image{tensor: ^tensor, metadata: nil}} = Imagex.decode(jxl_bytes <> corrupt_box)
+      end
+    end
+
     test "decode keeps alpha and drops other extra channels" do
       # RGB with alpha 50-57 and a depth channel
       {:ok, image} = Imagex.open("test/assets/jxl/rgb-alpha-depth.jxl")

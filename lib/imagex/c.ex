@@ -48,8 +48,8 @@ defmodule Imagex.C do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
-  @spec jxl_decompress(binary(), non_neg_integer()) :: decompress_ret_type()
-  def jxl_decompress(_bytes, _max_pixels) do
+  @spec jxl_decompress(binary(), non_neg_integer(), boolean()) :: decompress_ret_type()
+  def jxl_decompress(_bytes, _max_pixels, _read_boxes) do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
