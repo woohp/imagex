@@ -1003,6 +1003,12 @@ expected<decompress_result_t, string_view> tiff_render_page(
         return std::unexpected("invalid TIFF image dimensions");
     if (exceeds_max_pixels(width, height, max_pixels))
         return std::unexpected(MAX_PIXELS_ERROR);
+    // libtiff decodes a whole tile at a time, however small the image.
+    uint32_t tile_width = 0, tile_length = 0;
+    if (TIFFGetField(document, TIFFTAG_TILEWIDTH, &tile_width) &&
+        TIFFGetField(document, TIFFTAG_TILELENGTH, &tile_length) &&
+        exceeds_max_pixels(tile_width, tile_length, max_pixels))
+        return std::unexpected(MAX_PIXELS_ERROR);
 
     uint16_t orientation = ORIENTATION_TOPLEFT;
     TIFFGetFieldDefaulted(document, TIFFTAG_ORIENTATION, &orientation);
