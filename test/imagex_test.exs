@@ -985,6 +985,9 @@ defmodule ImagexTest do
 
       {:ok, pdf} = Imagex.Pdf.load(File.read!("test/assets/lena.pdf"))
       assert {:error, _} = Imagex.Pdf.render_page(pdf, 0, dpi: 100_000)
+      # poppler cannot allocate this, even with no limit
+      assert {:error, "PDF page is too large to render"} =
+               Imagex.Pdf.render_page(pdf, 0, dpi: 3300, max_pixels: :infinity)
 
       assert_raise ArgumentError, fn -> Imagex.decode(<<>>, max_pixels: 0) end
     end
