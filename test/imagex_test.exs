@@ -277,10 +277,12 @@ defmodule ImagexTest do
       assert {:ok, _bytes} = Imagex.encode(%Image{tensor: test_image.tensor, metadata: metadata}, :png)
     end
 
-    test "encode image drops XMP metadata containing NUL bytes, which PNG cannot store" do
-      image = %Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x>\0</x>"}}
-      {:ok, bytes} = Imagex.encode(image, :png)
-      assert {:ok, %Image{metadata: nil}} = Imagex.decode(bytes)
+    test "encode image drops XMP metadata that PNG text cannot store" do
+      for xmp <- ["<x>\0</x>", <<"<x>", 255, "</x>">>] do
+        image = %Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: xmp}}
+        {:ok, bytes} = Imagex.encode(image, :png)
+        assert {:ok, %Image{metadata: nil}} = Imagex.decode(bytes)
+      end
     end
 
     test "encode image rejects duplicate PNG XMP metadata", %{image: test_image} do
@@ -364,13 +366,58 @@ defmodule ImagexTest do
       assert {:error, "PNG language tags must be binaries, got: 123"} = Imagex.encode(image, :png)
     end
 
-    test "decode image converts Latin-1 zTXt metadata to UTF-8" do
-      png_bytes = png_with_ztxt("Comment", "hello ztxt caf\xE9")
-      {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes, format: :png)
+    test "decode image converts Latin-1 zTXt metadata to UTF-8, and encode converts the keyword back" do
+      png_bytes =
+        png_with_text_chunks([png_chunk("zTXt", <<"Caf\xE9", 0, 0, :zlib.compress("hello caf\xE9")::binary>>)])
+
+      {:ok, %Image{metadata: metadata} = image} = Imagex.decode(png_bytes, format: :png)
 
       assert metadata == %{
-               png_chunks: [%{keyword: "Comment", text: "hello ztxt café", language_tag: "", translated_keyword: ""}]
+               png_chunks: [%{keyword: "Café", text: "hello café", language_tag: "", translated_keyword: ""}]
              }
+
+      {:ok, png_bytes} = Imagex.encode(image, :png)
+      assert png_bytes =~ "iTXtCaf\xE9\0"
+      assert {:ok, %Image{metadata: ^metadata}} = Imagex.decode(png_bytes)
+    end
+
+    test "decode drops PNG text that is malformed or could not be written back" do
+      png_bytes =
+        png_with_text_chunks([
+          png_chunk("tEXt", "Kept\0text"),
+          png_chunk("tEXt", "no separator"),
+          png_chunk("tEXt", " Spaced\0text"),
+          png_chunk("zTXt", "Comment\0\0not zlib"),
+          png_chunk("zTXt", <<"Comment", 0, 0, binary_part(:zlib.compress("truncated"), 0, 6)::binary>>),
+          png_chunk("iTXt", <<"Comment", 0, 0, 0, 0, 0, 255>>),
+          png_chunk("iTXt", <<"XML:com.adobe.xmp", 0, 0, 0, 0, 0, 255>>)
+        ])
+
+      assert {:ok, %Image{metadata: %{png_chunks: [%{keyword: "Kept", text: "text"}]}}} = Imagex.decode(png_bytes)
+    end
+
+    test "decoded PNG text larger than libpng's 8 MB chunk limit can be written back" do
+      text = :binary.copy("a", 9 * 1024 * 1024)
+      png_bytes = png_with_text_chunks([png_chunk("zTXt", <<"Big", 0, 0, :zlib.compress(text)::binary>>)])
+      {:ok, %Image{metadata: %{png_chunks: [%{text: ^text}]}} = image} = Imagex.decode(png_bytes)
+
+      {:ok, png_bytes} = Imagex.encode(image, :png)
+      assert {:ok, %Image{metadata: %{png_chunks: [%{text: ^text}]}}} = Imagex.decode(png_bytes)
+    end
+
+    test "decode drops all PNG text that inflates past the limit" do
+      large = :zlib.compress(:binary.copy(<<0>>, 9 * 1024 * 1024))
+      chunks = [png_chunk("tEXt", "Small\0text") | List.duplicate(png_chunk("zTXt", <<"Big", 0, 0, large::binary>>), 2)]
+
+      assert {:ok, %Image{metadata: nil}} = Imagex.decode(png_with_text_chunks(chunks))
+    end
+
+    test "encode returns an error for PNG text that is not valid UTF-8 or a keyword PNG cannot store", %{
+      image: test_image
+    } do
+      for chunk <- [%{keyword: "Tag", text: <<255>>}, %{keyword: "Tag ", text: ""}, %{keyword: "日本", text: ""}] do
+        assert {:error, _} = Imagex.encode(%Image{tensor: test_image.tensor, metadata: %{png_chunks: [chunk]}}, :png)
+      end
     end
 
     test "encode round-trips 8- and 16-bit images with 1-4 channels" do
@@ -941,14 +988,10 @@ defmodule ImagexTest do
     end
   end
 
-  defp png_with_ztxt(keyword, text) do
-    tensor = Nx.broadcast(Nx.tensor([0, 0, 0], type: {:u, 8}), {8, 8, 3})
-    {:ok, png_bytes} = Imagex.encode(tensor, :png)
-
+  defp png_with_text_chunks(text_chunks) do
+    {:ok, png_bytes} = Imagex.encode(Nx.broadcast(Nx.tensor(0, type: :u8), {8, 8}), :png)
     [signature, ihdr_chunk | remaining_chunks] = split_png_chunks(png_bytes)
-    ztxt_chunk = png_chunk("zTXt", <<keyword::binary, 0, 0, :zlib.compress(text)::binary>>)
-
-    IO.iodata_to_binary([signature, ihdr_chunk, ztxt_chunk, remaining_chunks])
+    IO.iodata_to_binary([signature, ihdr_chunk, text_chunks, remaining_chunks])
   end
 
   defp split_png_chunks(<<signature::binary-size(8), rest::binary>>) do
