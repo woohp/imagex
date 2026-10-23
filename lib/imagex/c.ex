@@ -85,13 +85,14 @@ defmodule Imagex.C do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
-  @spec jxl_transcode_from_jpeg(binary(), integer(), boolean()) :: {:ok, binary()} | {:error, String.t()}
-  def jxl_transcode_from_jpeg(_jpeg_bytes, _effort, _store_jpeg_metadata) do
+  @spec jxl_transcode_from_jpeg(binary(), integer(), boolean(), non_neg_integer()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def jxl_transcode_from_jpeg(_jpeg_bytes, _effort, _store_jpeg_metadata, _max_pixels) do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
-  @spec jxl_transcode_to_jpeg(binary()) :: {:ok, binary()} | {:error, String.t()}
-  def jxl_transcode_to_jpeg(_jxl_bytes) do
+  @spec jxl_transcode_to_jpeg(binary(), non_neg_integer()) :: {:ok, binary()} | {:error, String.t()}
+  def jxl_transcode_to_jpeg(_jxl_bytes, _max_pixels) do
     :erlang.nif_error(:nif_library_not_loaded)
   end
 
