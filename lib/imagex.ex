@@ -97,8 +97,8 @@ defmodule Imagex do
   end
 
   defp decode_format(:webp, bytes, options) do
-    with {:ok, image} <- Image.from_native(Imagex.C.webp_decompress(bytes, options[:native_max_pixels]), false),
-         {:ok, metadata} <- Imagex.Webp.read_metadata(bytes, options[:parse_metadata]) do
+    with {:ok, image} <- Image.from_native(Imagex.C.webp_decompress(bytes, options[:native_max_pixels]), false) do
+      metadata = if options[:parse_metadata], do: Imagex.Webp.read_metadata(bytes)
       {:ok, %{image | metadata: metadata}}
     end
   end
