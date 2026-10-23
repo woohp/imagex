@@ -91,7 +91,10 @@ defmodule Imagex do
   # libjxl applies the codestream orientation, so the pixels are already upright.
   defp decode_format(:jxl, bytes, options) do
     with {:ok, image} <-
-           Image.from_native(Imagex.C.jxl_decompress(bytes, options[:native_max_pixels]), options[:parse_metadata]) do
+           Image.from_native(
+             Imagex.C.jxl_decompress(bytes, options[:native_max_pixels], options[:parse_metadata]),
+             options[:parse_metadata]
+           ) do
       {:ok, upright(image)}
     end
   end

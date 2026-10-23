@@ -594,13 +594,16 @@ static expected<vector<uint8_t>, string_view> jxl_collect_compressed(JxlEncoder*
 }
 
 
-expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes, uint64_t max_pixels)
+expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_bytes, uint64_t max_pixels, bool read_boxes)
 {
     // Multi-threaded parallel runner.
     auto runner = JxlResizableParallelRunnerMake(nullptr);
 
     auto dec = JxlDecoderMake(nullptr);
-    JXL_ENSURE_SUCCESS(JxlDecoderSubscribeEvents, dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE | JXL_DEC_BOX);
+    JXL_ENSURE_SUCCESS(
+        JxlDecoderSubscribeEvents,
+        dec.get(),
+        JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE | (read_boxes ? JXL_DEC_BOX : 0));
     JXL_ENSURE_SUCCESS(JxlDecoderSetParallelRunner, dec.get(), JxlResizableParallelRunner, runner.get());
     JXL_ENSURE_SUCCESS(JxlDecoderSetDecompressBoxes, dec.get(), JXL_TRUE);
     JXL_ENSURE_SUCCESS(JxlDecoderSetUnpremultiplyAlpha, dec.get(), JXL_TRUE);
@@ -611,23 +614,23 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
     const constexpr size_t chunk_size = 0xffff;
     string box_type;  // type of the metadata box being collected, empty if none
     vector<uint8_t> box_data;
-    // libjxl decompresses brob boxes, so a small file could otherwise expand into huge metadata. Past this cap, all
-    // box metadata is dropped and the remaining boxes are skipped.
+    // libjxl decompresses brob boxes, so a small file could otherwise expand into huge metadata.
     const size_t max_box_bytes = (16 << 20) + jxl_bytes.size;
     size_t box_bytes = 0;  // collected from finished boxes
-    bool boxes_too_large = false;
 
-    auto drop_boxes = [&]() {
-        boxes_too_large = true;
-        box_type.clear();
-        result.exif.reset();
-        result.xml_boxes.clear();
-        result.jumb_boxes.clear();
+    // Malformed boxes, and boxes past the cap, are dropped like other bad metadata, by decoding again without them.
+    // This attempt's buffers are freed first, so the two decodes don't hold two images at once.
+    auto decode_without_boxes = [&]() {
+        dec.reset();
+        result = {};
+        box_data = {};
+        return jxl_decompress(jxl_bytes, max_pixels, false);
     };
 
+    // Returns whether the boxes collected so far are within the cap.
     auto finish_box = [&]() {
         if (box_type.empty())
-            return;
+            return box_bytes <= max_box_bytes;
 
         box_data.resize(box_data.size() - JxlDecoderReleaseBoxBuffer(dec.get()));
         box_bytes += box_data.size();
@@ -644,8 +647,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
 
         box_type.clear();
-        if (box_bytes > max_box_bytes)
-            drop_boxes();
+        return box_bytes <= max_box_bytes;
     };
 
     for (;;)
@@ -654,6 +656,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
 
         if (status == JXL_DEC_ERROR)
         {
+            if (read_boxes)
+                return decode_without_boxes();
             return std::unexpected("Decoder error");
         }
         else if (status == JXL_DEC_NEED_MORE_INPUT)
@@ -696,12 +700,13 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_BOX)
         {
-            finish_box();
+            if (!finish_box())
+                return decode_without_boxes();
 
             JxlBoxType type;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBoxType, dec.get(), type, JXL_TRUE);
             const string_view type_view(type, 4);
-            if (boxes_too_large || (type_view != "Exif" && type_view != "xml " && type_view != "jumb"))
+            if (type_view != "Exif" && type_view != "xml " && type_view != "jumb")
                 continue;
 
             box_type = type_view;
@@ -712,14 +717,9 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         {
             const size_t remaining = JxlDecoderReleaseBoxBuffer(dec.get());
             const size_t output_pos = box_data.size() - remaining;
-            const size_t budget = max_box_bytes - box_bytes;
-            if (box_data.size() >= budget)
-            {
-                // Without a new buffer, libjxl skips the rest of the box.
-                drop_boxes();
-                continue;
-            }
-            box_data.resize(std::min(box_data.size() + chunk_size, budget));
+            if (box_bytes + box_data.size() > max_box_bytes)
+                return decode_without_boxes();
+            box_data.resize(box_data.size() + chunk_size);
             JXL_ENSURE_SUCCESS(
                 JxlDecoderSetBoxBuffer, dec.get(), box_data.data() + output_pos, box_data.size() - output_pos);
         }
@@ -730,7 +730,8 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
         }
         else if (status == JXL_DEC_SUCCESS)
         {
-            finish_box();
+            if (!finish_box())
+                return decode_without_boxes();
             return result;
         }
         else
