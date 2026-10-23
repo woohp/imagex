@@ -1024,6 +1024,14 @@ defmodule ImagexTest do
 
       assert {:error, "PNG cannot encode 3-channel f32 pixels"} =
                Imagex.encode(Nx.as_type(image.tensor, {:f, 32}), :png)
+
+      assert {:error, "BMP cannot encode 1-channel u8 pixels"} = Imagex.encode(Nx.iota({2, 2}, type: :u8), :bmp)
+    end
+
+    test "every encoder raises for a tensor that is not an image" do
+      for format <- [:jpeg, :png, :jxl, :webp, :ppm, :bmp] do
+        assert_raise ArgumentError, fn -> Imagex.encode(Nx.iota({1, 1, 1, 1}, type: :u8), format) end
+      end
     end
 
     test "convert returns the kind of value it was given" do
