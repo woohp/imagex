@@ -1,10 +1,7 @@
 defmodule DetectorTest do
   use ExUnit.Case
 
-  defp load_bytes(path) do
-    {:ok, file} = File.open(path, [:read])
-    IO.binread(file, 100)
-  end
+  defp load_bytes(path), do: path |> File.read!() |> binary_part(0, 100)
 
   test "detect jpeg" do
     assert Imagex.Detect.detect(load_bytes("test/assets/lena.jpg")) == :jpeg
