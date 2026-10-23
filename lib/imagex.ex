@@ -308,12 +308,12 @@ defmodule Imagex do
 
   def encode(%Nx.Tensor{} = tensor, :ppm, options) do
     Keyword.validate!(options, metadata: nil)
-    Imagex.PPM.encode(tensor)
+    with :ok <- check_pixels(tensor, "PPM", [8], [1, 3]), do: Imagex.PPM.encode(tensor)
   end
 
   def encode(%Nx.Tensor{} = tensor, :bmp, options) do
     Keyword.validate!(options, metadata: nil)
-    Imagex.BMP.encode(tensor)
+    with :ok <- check_pixels(tensor, "BMP", [8], [3, 4]), do: Imagex.BMP.encode(tensor)
   end
 
   def encode(%Nx.Tensor{}, format, _options) do
