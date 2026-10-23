@@ -1,7 +1,7 @@
 # Imagex
 
 Load and save images, using libjpeg, libpng, libjxl, libtiff, libwebp, and poppler as backends.
-Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf, webp (static images).
+Formats supported include: jpeg, png, bmp, jpeg-xl, ppm (8-bit binary), tiff, pdf, webp (static images).
 
 
 ## Install
@@ -82,8 +82,8 @@ JXL and TIFF pixels are always decoded upright.
 
 Decoding refuses images larger than 178,956,970 pixels (Pillow's limit) before allocating any pixel
 memory, since a small file can claim a huge image. Raise or lift the limit with `max_pixels:`
-(`max_pixels: :infinity` disables it) on `decode/2`, `open/2`, `Imagex.Tiff.render_page/3` and
-`Imagex.Pdf.render_page/3`.
+(`max_pixels: :infinity` disables it) on `decode/2`, `open/2`, `Imagex.Tiff.render_page/3`,
+`Imagex.Pdf.render_page/3` and the `Imagex.Jxl` transcode functions.
 
 ### Errors
 
@@ -104,8 +104,9 @@ Supported metadata, read and written:
 
 ### Reading metadata
 
-Metadata is parsed by default during `decode/2` and `open/2`. EXIF tags that Imagex does not know, or
-cannot write back, are skipped, and byte-valued tags such as `exif_version` decode as binaries.
+Metadata is parsed by default during `decode/2` and `open/2`. Metadata that is malformed, too large,
+or cannot be written back is dropped, and the image still decodes. EXIF tags that Imagex does not know
+are skipped, and byte-valued tags such as `exif_version` decode as binaries.
 
 ```elixir
 {:ok, image} = Imagex.open("lena.jpg")
@@ -231,7 +232,7 @@ Notes:
 - `metadata.exif` is used for JPEG, PNG, JXL, and WebP writing.
 - `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, JXL XML boxes, and WebP XMP chunks.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
-- PNG text is always UTF-8. Latin-1 `tEXt` and `zTXt` chunks are converted on decode, and everything is written as `iTXt`.
+- PNG text and keywords are UTF-8. PNG stores keywords, and `tEXt` and `zTXt` text, as Latin-1, so these are converted on decode, and keywords are converted back on encode and must fit in Latin-1. Everything is written as `iTXt`.
 - When decoding PNG and JXL, a single XMP chunk or XML box is returned as `metadata.xmp` rather than in `png_chunks` or `jxl_boxes`.
 - `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
 - `metadata.xmp` cannot be combined with JXL XML boxes in `metadata.jxl_boxes`, or with PNG XMP chunks in `metadata.png_chunks`.
