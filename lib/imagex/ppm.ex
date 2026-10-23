@@ -2,11 +2,10 @@ defmodule Imagex.PPM do
   @moduledoc false
   alias Imagex.Image
 
-  @spec encode(Nx.Tensor.t()) :: {:ok, binary()} | {:error, String.t()}
+  @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
   def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width}} = image), do: encode("P5", width, height, image)
   def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, 1}} = image), do: encode("P5", width, height, image)
   def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, 3}} = image), do: encode("P6", width, height, image)
-  def encode(_image), do: {:error, "PPM requires unsigned 8-bit grayscale or RGB pixels"}
 
   defp encode(magic, width, height, image) do
     {:ok, <<magic::binary, "\n#{width} #{height}\n255\n", Nx.to_binary(image)::binary>>}

@@ -4,7 +4,7 @@ defmodule Imagex.BMP do
 
   @header_size 14 + 40
 
-  @spec encode(Nx.Tensor.t()) :: {:ok, binary()} | {:error, String.t()}
+  @spec encode(Nx.Tensor.t()) :: {:ok, binary()}
   def encode(%Nx.Tensor{type: {:u, 8}, shape: {height, width, channels}} = image) when channels in [3, 4] do
     row_size = width * channels
     padding = stride(row_size) - row_size
@@ -17,8 +17,6 @@ defmodule Imagex.BMP do
        width::32-little, -height::signed-32-little, 1::16-little, channels * 8::16-little, 0::32,
        byte_size(pixels)::32-little, 2835::32-little, 2835::32-little, 0::32, 0::32, pixels::binary>>}
   end
-
-  def encode(_image), do: {:error, "BMP requires unsigned 8-bit RGB or RGBA pixels"}
 
   @spec decode(binary()) :: {:ok, Image.t()} | {:error, String.t()}
   def decode(bytes) do
