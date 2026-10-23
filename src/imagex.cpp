@@ -299,6 +299,24 @@ struct png_write_guard
 };
 
 
+// tEXt and zTXt text is Latin-1, while iTXt text, and metadata in general, is UTF-8.
+static string latin1_to_utf8(string_view latin1)
+{
+    string utf8;
+    for (const unsigned char c : latin1)
+    {
+        if (c < 0x80)
+            utf8 += static_cast<char>(c);
+        else
+        {
+            utf8 += static_cast<char>(0xC0 | c >> 6);
+            utf8 += static_cast<char>(0x80 | (c & 0x3F));
+        }
+    }
+    return utf8;
+}
+
+
 yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8_t> png_bytes, uint64_t max_pixels)
 {
     // check png signature
@@ -425,7 +443,7 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
                 text.compression == PNG_ITXT_COMPRESSION_NONE || text.compression == PNG_ITXT_COMPRESSION_zTXt;
             text_data.emplace_back(
                 text.key,
-                string(text.text, is_itxt ? text.itxt_length : text.text_length),
+                is_itxt ? string(text.text, text.itxt_length) : latin1_to_utf8({text.text, text.text_length}),
                 text.lang != nullptr ? text.lang : "",
                 text.lang_key != nullptr ? text.lang_key : "");
         }
