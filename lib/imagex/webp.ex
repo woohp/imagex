@@ -22,9 +22,8 @@ defmodule Imagex.Webp do
     end
   end
 
-  def read_metadata(_bytes, false), do: {:ok, nil}
-
-  def read_metadata(bytes, true) do
+  # libwebp has already decoded the image, so a malformed container only drops the metadata.
+  def read_metadata(bytes) do
     with {:ok, chunks} <- chunks(bytes) do
       metadata =
         Enum.reduce(chunks, %{}, fn
@@ -41,7 +40,9 @@ defmodule Imagex.Webp do
             acc
         end)
 
-      {:ok, if(metadata == %{}, do: nil, else: metadata)}
+      if metadata != %{}, do: metadata
+    else
+      {:error, _reason} -> nil
     end
   end
 
