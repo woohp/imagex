@@ -239,7 +239,7 @@ yielding<expected<binary, string>> jpeg_compress(
     yielding_timer timer;
     while (cinfo.next_scanline < cinfo.image_height)
     {
-        auto row = pixels.data() + cinfo.next_scanline * channels * width;
+        auto row = pixels.data() + static_cast<size_t>(cinfo.next_scanline) * channels * width;
         jpeg_write_scanlines(&cinfo, &row, 1);
 
         if (timer.times_up())
