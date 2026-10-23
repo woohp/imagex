@@ -502,6 +502,13 @@ defmodule ImagexTest do
       assert Nx.to_flat_list(image.tensor[[.., .., 3]]) == Enum.to_list(50..57)
     end
 
+    test "decode keeps 16-bit alpha of an 8-bit image" do
+      # gray 100 and 200 with alpha 1000 and 32000
+      {:ok, image} = Imagex.open("test/assets/jxl/16-bit-alpha.jxl")
+      assert image.tensor.type == {:u, 16}
+      assert Nx.to_flat_list(image.tensor) == [100 * 257, 1000, 200 * 257, 32000]
+    end
+
     test "decode returns straight alpha for premultiplied images" do
       # stored premultiplied as (100, 50, 25, 128) and (200, 100, 50, 255)
       {:ok, image} = Imagex.open("test/assets/jxl/premultiplied.jxl")
