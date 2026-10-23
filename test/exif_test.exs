@@ -97,6 +97,17 @@ defmodule ExifTest do
       assert %{exif: %{ifd1: %{thumbnail_data: <<1, 2, 3, 4, 5, 6>>}}} = Imagex.Exif.read_exif_from_tiff(exif)
     end
 
+    test "thumbnail strips adding up to more than the EXIF data are dropped" do
+      # as above, but both strips are the first 40 of the 60 bytes
+      exif =
+        <<"II", 42, 0, 8::32-little, 0::16-little, 14::32-little, 2::16-little, 0x0111::16-little, 4::16-little,
+          2::32-little, 44::32-little, 0x0117::16-little, 4::16-little, 2::32-little, 52::32-little, 0::32-little,
+          0::32-little, 0::32-little, 40::32-little, 40::32-little>>
+
+      assert %{exif: %{ifd1: ifd1}} = Imagex.Exif.read_exif_from_tiff(exif)
+      refute Map.has_key?(ifd1, :thumbnail_data)
+    end
+
     test "many entries sharing one large value decode quickly" do
       count = 400
       data_offset = 8 + 2 + count * 12 + 4
