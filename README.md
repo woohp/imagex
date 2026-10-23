@@ -3,10 +3,6 @@
 Load and save images, using libjpeg, libpng, libjxl, libtiff, libwebp, and poppler as backends.
 Formats supported include: jpeg, png, bmp, jpeg-xl, ppm, tiff, pdf, webp (static images).
 
-JPEG and PNG pixels are encoded and decoded in ~1 ms slices on normal schedulers, alongside other processes;
-work that libjpeg/libpng cannot split, and the other formats, run on dirty schedulers. Many concurrent
-JPEG/PNG calls therefore compete for CPU like any other processes, so cap their concurrency if needed.
-
 
 ## Install
 
@@ -63,6 +59,7 @@ See `Imagex.encode/3` for each format's options and accepted pixel types. Animat
 and ICC color management is not supported.
 
 Grayscale images are `{height, width}` tensors; other images are `{height, width, channels}`.
+Alpha, if present, is the last channel and is not premultiplied.
 TIFF pages are always decoded as 8-bit RGBA.
 Convert between grayscale, RGB and their alpha variants with `Imagex.convert/2`:
 
@@ -234,7 +231,7 @@ Notes:
 - `metadata.exif` is used for JPEG, PNG, JXL, and WebP writing.
 - `metadata.xmp` is used for JPEG APP1 XMP, PNG XMP text chunks, JXL XML boxes, and WebP XMP chunks.
 - `metadata.png_chunks` accepts `%{keyword, text}` and optional `:language_tag` / `:translated_keyword`.
-- PNG text metadata is normalized on decode and written as `iTXt` chunks.
+- PNG text is always UTF-8. Latin-1 `tEXt` and `zTXt` chunks are converted on decode, and everything is written as `iTXt`.
 - When decoding PNG and JXL, a single XMP chunk or XML box is returned as `metadata.xmp` rather than in `png_chunks` or `jxl_boxes`.
 - `metadata.jxl_boxes` currently supports `:xml` and `:jumb`.
 - `metadata.xmp` cannot be combined with JXL XML boxes in `metadata.jxl_boxes`, or with PNG XMP chunks in `metadata.png_chunks`.
