@@ -483,16 +483,21 @@ defmodule ImagexTest do
       assert contents =~ "<rdf:li xml:lang=\"x-default\">test</rdf:li>"
     end
 
-    test "decode rejects metadata boxes that expand past the limit" do
+    test "decode drops all metadata boxes once they expand past the limit" do
       {:ok, jxl_bytes} = Imagex.encode(%Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x/>"}}, :jxl)
       # brob boxes holding xml boxes compressed from 32 MiB of zeros, and from 60,000 zeros
       box = fn zeros -> <<12 + byte_size(zeros)::32, "brob", "xml ", zeros::binary>> end
       large_box = box.(Base.decode64!("z///f/gnAOKxQCD3/p/////wTwDEYQGA7v3/"))
       small_box = box.(Base.decode64!("H1/q+CcA4rFAIEMcAA=="))
 
-      assert Imagex.decode(jxl_bytes <> large_box) == {:error, "JXL metadata boxes are too large"}
-      assert Imagex.decode(jxl_bytes <> :binary.copy(small_box, 300)) == {:error, "JXL metadata boxes are too large"}
-      assert {:ok, _image} = Imagex.decode(jxl_bytes <> :binary.copy(small_box, 200))
+      {:ok, %Image{tensor: tensor}} = Imagex.decode(jxl_bytes)
+
+      for boxes <- [large_box, :binary.copy(small_box, 300)] do
+        assert {:ok, %Image{tensor: ^tensor, metadata: nil}} = Imagex.decode(jxl_bytes <> boxes)
+      end
+
+      assert {:ok, %Image{metadata: %{jxl_boxes: boxes}}} = Imagex.decode(jxl_bytes <> :binary.copy(small_box, 200))
+      assert length(boxes) == 201
     end
 
     test "decode keeps alpha and drops other extra channels" do
