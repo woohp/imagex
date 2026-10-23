@@ -672,6 +672,12 @@ defmodule ImagexTest do
     assert image.tensor.shape == {1024, 1024, 4}
   end
 
+  test "rendering a page missing from the page tree returns an error" do
+    # /Count claims one page, but the page object is null
+    {:ok, pdf} = Imagex.Pdf.load(File.read!("test/assets/broken-page-tree.pdf"))
+    assert {:error, "failed to load PDF page"} = Imagex.Pdf.render_page(pdf, 0)
+  end
+
   test "decode tiff as its first page" do
     bytes = File.read!("test/assets/lena.tiff")
     {:ok, %Image{} = image} = Imagex.decode(bytes)

@@ -895,6 +895,8 @@ expected<decompress_result_t, string_view> pdf_render_page(
         return std::unexpected("page index out of range");
 
     unique_ptr<poppler::page> page(document->create_page(page_idx));
+    if (!page)
+        return std::unexpected("failed to load PDF page");
     // Page sizes are in points, 72 per inch. Round up, in floating point, so a fractional or huge
     // page cannot slip under the limit.
     const auto rect = page->page_rect();
