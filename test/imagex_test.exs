@@ -703,6 +703,7 @@ defmodule ImagexTest do
     {:ok, %Imagex.Pdf{} = pdf} = Imagex.Pdf.load(bytes)
     assert pdf.num_pages == 1
     assert {:error, "page index out of range"} = Imagex.Pdf.render_page(pdf, 1)
+    assert {:error, "page index out of range"} = Imagex.Pdf.render_page(pdf, 2 ** 40)
 
     {:ok, %Image{} = image} = Imagex.Pdf.render_page(pdf, 0)
     assert image.tensor.shape == {512, 512, 4}
@@ -739,6 +740,7 @@ defmodule ImagexTest do
     {:ok, %Image{} = image} = Imagex.Tiff.render_page(tiff, 0)
     assert image.tensor.shape == {512, 512, 4}
     assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, -1)
+    assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, 2 ** 40)
   end
 
   describe "orientation" do
@@ -868,7 +870,7 @@ defmodule ImagexTest do
       # an 8x8 JPEG whose header claims 65500x21858 pixels (about 4 GB of RGB)
       {:ok, jpeg} = Imagex.encode(Nx.broadcast(Nx.tensor(128, type: {:u, 8}), {8, 8, 3}), :jpeg)
       [{sof, _}] = :binary.matches(jpeg, <<0xFF, 0xC0>>)
-      <<before::binary-size(sof + 5), _height::16, _width::16, rest::binary>> = jpeg
+      <<before::binary-size(^sof + 5), _height::16, _width::16, rest::binary>> = jpeg
 
       assert {:error, "image has more pixels than max_pixels allows"} =
                Imagex.decode(<<before::binary, 21858::16, 65500::16, rest::binary>>)
