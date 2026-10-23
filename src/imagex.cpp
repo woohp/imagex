@@ -656,9 +656,9 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             JxlBasicInfo info;
             JXL_ENSURE_SUCCESS(JxlDecoderGetBasicInfo, dec.get(), &info);
 
-            if (info.exponent_bits_per_sample != 0)
+            if (info.exponent_bits_per_sample != 0 || info.alpha_exponent_bits != 0)
                 return std::unexpected("floating-point JXL images are not supported");
-            if (info.bits_per_sample > 16)
+            if (info.bits_per_sample > 16 || info.alpha_bits > 16)
                 return std::unexpected("JXL images with more than 16 bits per sample are not supported");
             if (exceeds_max_pixels(info.xsize, info.ysize, max_pixels))
                 return std::unexpected(MAX_PIXELS_ERROR);
@@ -670,7 +670,7 @@ expected<decompress_result_t, string_view> jxl_decompress(const binary& jxl_byte
             // Only alpha is interleaved with the color channels; other extra channels, like depth, are dropped.
             result.channels = info.num_color_channels + (info.alpha_bits > 0 ? 1 : 0);
             // libjxl scales other integer depths (e.g. 10 or 12 bits) to the full output range.
-            result.bit_depth = info.bits_per_sample <= 8 ? 8 : 16;
+            result.bit_depth = std::max(info.bits_per_sample, info.alpha_bits) <= 8 ? 8 : 16;
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
         {
