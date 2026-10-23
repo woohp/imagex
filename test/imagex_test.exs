@@ -722,6 +722,15 @@ defmodule ImagexTest do
     assert compressed == File.read!("test/assets/lena.ppm")
   end
 
+  test "decode ppm returns an error for a maxval other than 255" do
+    for max_value <- ["15", "65535", "zz"] do
+      assert {:error, _} = Imagex.decode("P5\n2 1\n#{max_value}\n" <> <<15, 0>>, format: :ppm)
+    end
+
+    assert {:ok, %Image{tensor: tensor}} = Imagex.decode("P5\n2 1\n255\n" <> <<15, 0>>, format: :ppm)
+    assert Nx.to_list(tensor) == [[15, 0]]
+  end
+
   test "decode bmp rgb pos height", %{image: test_image} do
     bmp_bytes = File.read!("test/assets/lena-rgb-pos-height.bmp")
     {:ok, %Image{} = image} = Imagex.decode(bmp_bytes, format: :bmp)
