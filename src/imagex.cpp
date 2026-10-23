@@ -182,6 +182,8 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
         }
     }
 
+    // Reading to the end of the file is not split, and its length depends only on the input.
+    co_yield schedule_on(DirtyFlags::DirtyCpu);
     jpeg_finish_decompress(&cinfo);
 
     co_yield decompress_result_t{
@@ -394,7 +396,9 @@ yielding<expected<decompress_result_t, string_view>> png_decompress(vector<uint8
         }
     }
 
-    // Read the chunks after the image data, which may hold metadata, and check the file is complete.
+    // Read the chunks after the image data, which may hold metadata, and check the file is complete. This is not
+    // split, and its length depends only on the input.
+    co_yield schedule_on(DirtyFlags::DirtyCpu);
     png_read_end(png_ptr, info_ptr);
 
     // read the exif data
