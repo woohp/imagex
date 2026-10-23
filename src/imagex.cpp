@@ -1012,7 +1012,7 @@ expected<decompress_result_t, string_view> tiff_render_page(
     // Requesting the file's own orientation reads the rows as stored. libtiff only flips, never
     // transposes, so all orientations are applied below.
     binary pixels{static_cast<size_t>(width) * height * 4};
-    if (!TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), orientation, 0))
+    if (!TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), orientation, 1))
         return std::unexpected("failed to read TIFF image");
 
     // libtiff's RGBA interface premultiplies alpha; return straight alpha like the other decoders.
