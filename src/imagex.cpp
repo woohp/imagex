@@ -1,5 +1,6 @@
 #include "expp.hpp"
 #include <bit>
+#include <climits>
 #include <cmath>
 #include <cstring>
 #include <erl_nif.h>
@@ -933,6 +934,9 @@ expected<decompress_result_t, string_view> pdf_render_page(
     const double page_pixels = std::ceil(rect.width() * dpi / 72) * std::ceil(rect.height() * dpi / 72);
     if (max_pixels != 0 && page_pixels > static_cast<double>(max_pixels))
         return std::unexpected(MAX_PIXELS_ERROR);
+    // poppler cannot allocate a 4-byte-per-pixel bitmap past INT_MAX bytes, and renders a blank 1x1 image instead.
+    if (page_pixels * 4 > INT_MAX)
+        return std::unexpected("PDF page is too large to render");
     poppler::page_renderer renderer;
     renderer.set_render_hints(
         poppler::page_renderer::antialiasing | poppler::page_renderer::text_antialiasing |
