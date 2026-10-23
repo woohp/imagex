@@ -27,6 +27,9 @@
 #include <webp/decode.h>
 #include <webp/encode.h>
 
+// jerror.h numbers its messages by JPEG_LIB_VERSION, so it must follow jpeglib.h.
+#include <jerror.h>
+
 using namespace std;
 using namespace expp;
 
@@ -121,6 +124,15 @@ yielding<expected<decompress_result_t, string>> jpeg_decompress(std::vector<uint
     // create decompressor
     cinfo.err = jpeg_std_error(&err);
     err.error_exit = jpeg_error_exit;
+    // libjpeg pads a truncated file with gray and only warns when the coded data runs out. Fail instead, but accept
+    // a file that only lacks its EOI marker, and drop the other warnings rather than print them. The arithmetic
+    // decoder never warns that the coded data ran out, so for it the end of the file is the only signal.
+    err.emit_message = [](j_common_ptr cinfo, int msg_level) {
+        const int code = cinfo->err->msg_code;
+        const bool arithmetic = reinterpret_cast<j_decompress_ptr>(cinfo)->arith_code;
+        if (msg_level < 0 && (code == JWRN_HIT_MARKER || (code == JWRN_JPEG_EOF && arithmetic)))
+            jpeg_error_exit(cinfo);
+    };
     jpeg_create_decompress(&cinfo);
     jpeg_guard guard{reinterpret_cast<j_common_ptr>(&cinfo)};
     cinfo.do_fancy_upsampling = FALSE;

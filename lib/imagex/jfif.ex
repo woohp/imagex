@@ -59,18 +59,20 @@ defmodule Imagex.Jfif do
          <<"JFIF\0"::binary, version_major::8, version_minor::8, density_units::8, density_x::16, density_y::16,
            thumbnail_width::8, thumbnail_height::8, thumbnail_data::binary>> = _app0_data
        ) do
-    %{
-      jfif: %{
-        version_major: version_major,
-        version_minor: version_minor,
-        density_units: density_units,
-        density_x: density_x,
-        density_y: density_y,
-        thumbnail_width: thumbnail_width,
-        thumbnail_height: thumbnail_height,
-        thumbnail_data: thumbnail_data
-      }
+    jfif = %{
+      version_major: version_major,
+      version_minor: version_minor,
+      thumbnail_width: thumbnail_width,
+      thumbnail_height: thumbnail_height,
+      thumbnail_data: thumbnail_data
     }
+
+    # Keep only a density that can be written back; files in the wild also have units > 2 or zero densities.
+    if density_units in 0..2 and density_x > 0 and density_y > 0 do
+      %{jfif: Map.merge(jfif, %{density_units: density_units, density_x: density_x, density_y: density_y})}
+    else
+      %{jfif: jfif}
+    end
   end
 
   # JFXX extension thumbnails: 0x10 is a complete JPEG stream, 0x11 is palettized, 0x12 is RGB.
