@@ -358,19 +358,12 @@ defmodule ImagexTest do
       assert {:error, "PNG language tags must be binaries, got: 123"} = Imagex.encode(image, :png)
     end
 
-    test "decode image preserves zTXt metadata" do
-      png_bytes = png_with_ztxt("Comment", "hello ztxt 世界")
+    test "decode image converts Latin-1 zTXt metadata to UTF-8" do
+      png_bytes = png_with_ztxt("Comment", "hello ztxt caf\xE9")
       {:ok, %Image{metadata: metadata}} = Imagex.decode(png_bytes, format: :png)
 
       assert metadata == %{
-               png_chunks: [
-                 %{
-                   keyword: "Comment",
-                   text: "hello ztxt 世界",
-                   language_tag: "",
-                   translated_keyword: ""
-                 }
-               ]
+               png_chunks: [%{keyword: "Comment", text: "hello ztxt café", language_tag: "", translated_keyword: ""}]
              }
     end
 
