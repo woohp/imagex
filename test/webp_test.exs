@@ -54,10 +54,12 @@ defmodule Imagex.WebpTest do
     assert Nx.to_binary(image.tensor) == Nx.to_binary(expected.tensor)
   end
 
-  test "rejects a truncated container rather than discarding malformed metadata" do
+  test "rejects a malformed chunk rather than discarding metadata" do
     bytes = File.read!("test/assets/webp/lossy-alpha-exif-xmp.webp")
-    truncated = binary_part(bytes, 0, byte_size(bytes) - 1)
-    assert {:error, _} = Imagex.decode(truncated)
+    # the trailing XMP chunk claims 100 bytes more than the file holds
+    [{xmp, _}] = :binary.matches(bytes, "XMP ")
+    <<before::binary-size(^xmp + 4), size::little-32, rest::binary>> = bytes
+    assert Imagex.decode(<<before::binary, size + 100::little-32, rest::binary>>) == {:error, "invalid WebP chunk"}
   end
 
   test "lossless RGB and RGBA preserve pixels, including invisible colors" do
