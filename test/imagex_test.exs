@@ -810,6 +810,10 @@ defmodule ImagexTest do
     assert {:error, "page index out of range"} = Imagex.Tiff.render_page(tiff, 2 ** 40)
   end
 
+  test "decode tiff returns an error for a corrupt strip" do
+    assert {:error, "failed to read TIFF image"} = Imagex.open("test/assets/tiff/corrupt-strip.tif")
+  end
+
   test "tiff pages before a broken next-page offset render" do
     {:ok, tiff} = Imagex.Tiff.load(File.read!("test/assets/tiff/broken-next-page.tif"))
     assert tiff.num_pages == 1
