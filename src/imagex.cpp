@@ -1031,6 +1031,15 @@ expected<decompress_result_t, string_view> tiff_render_page(
     if (!TIFFReadRGBAImageOriented(document, width, height, reinterpret_cast<uint32_t*>(pixels.data), orientation, 0))
         return std::unexpected("failed to read TIFF image");
 
+    // libtiff's RGBA interface premultiplies alpha; return straight alpha like the other decoders.
+    for (size_t i = 0; i < pixels.size; i += 4)
+    {
+        const unsigned alpha = pixels.data[i + 3];
+        if (alpha != 0 && alpha != 255)
+            for (size_t c = i; c < i + 3; c++)
+                pixels.data[c] = std::min(255u, (pixels.data[c] * 255u + alpha / 2) / alpha);
+    }
+
     if (orientation == ORIENTATION_TOPLEFT)
         return decompress_result_t{
             .pixels = std::move(pixels),

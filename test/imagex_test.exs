@@ -727,6 +727,12 @@ defmodule ImagexTest do
     assert {:error, "failed to load PDF page"} = Imagex.Pdf.render_page(pdf, 0)
   end
 
+  test "decode tiff returns straight alpha" do
+    # every pixel is stored as unassociated (255, 0, 0, 128), which libtiff premultiplies
+    {:ok, image} = Imagex.open("test/assets/tiff/unassociated-alpha.tif")
+    assert Nx.to_flat_list(image.tensor[0][0]) == [255, 0, 0, 128]
+  end
+
   test "decode tiff as its first page" do
     bytes = File.read!("test/assets/lena.tiff")
     {:ok, %Image{} = image} = Imagex.decode(bytes)
