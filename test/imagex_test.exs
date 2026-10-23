@@ -277,6 +277,12 @@ defmodule ImagexTest do
       assert {:ok, _bytes} = Imagex.encode(%Image{tensor: test_image.tensor, metadata: metadata}, :png)
     end
 
+    test "encode image drops XMP metadata containing NUL bytes, which PNG cannot store" do
+      image = %Image{tensor: Nx.iota({2, 2}, type: :u8), metadata: %{xmp: "<x>\0</x>"}}
+      {:ok, bytes} = Imagex.encode(image, :png)
+      assert {:ok, %Image{metadata: nil}} = Imagex.decode(bytes)
+    end
+
     test "encode image rejects duplicate PNG XMP metadata", %{image: test_image} do
       image = %Image{
         tensor: test_image.tensor,

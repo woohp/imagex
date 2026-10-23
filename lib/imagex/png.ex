@@ -29,7 +29,8 @@ defmodule Imagex.Png do
       png_texts = Enum.map(png_chunks, &text_from_chunk/1)
 
       cond do
-        is_nil(xmp) ->
+        # PNG text cannot hold NUL bytes, so such XMP is dropped, like XMP too large for a JPEG segment.
+        is_nil(xmp) or String.contains?(xmp, <<0>>) ->
           {:ok, png_texts}
 
         Enum.any?(png_texts, &(elem(&1, 0) == @xmp_keyword)) ->
