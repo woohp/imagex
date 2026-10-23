@@ -24,7 +24,8 @@ defmodule Imagex.BMP do
   def decode(bytes) do
     with <<"BM", _file_size::32, _reserved::32, offset::32-little, dib_header_size::32-little, width::signed-32-little,
            height::signed-32-little, 1::16-little, bits_per_pixel::16-little, 0::32, _rest::binary>>
-         when dib_header_size in [40, 124] and bits_per_pixel in [24, 32] and width > 0 and height != 0 <- bytes,
+         when dib_header_size in [40, 124] and bits_per_pixel in [24, 32] and width > 0 and height != 0 and
+                offset >= 14 + dib_header_size <- bytes,
          channels = div(bits_per_pixel, 8),
          row_size = width * channels,
          stride = stride(row_size),
