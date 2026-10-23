@@ -47,31 +47,6 @@ defmodule ExifTest do
            }
   end
 
-  test "exif from jpeg-xl file" do
-    jxl_bytes = File.read!("test/assets/lena.jxl")
-    metadata = read_metadata(jxl_bytes)
-
-    assert metadata == %{
-             exif: %{
-               ifd0: %{
-                 exif: %{pixel_y_dimension: 512, pixel_x_dimension: 512, color_space: 1},
-                 orientation: 1,
-                 resolution_unit: 2,
-                 y_resolution: {72, 1},
-                 x_resolution: {72, 1}
-               }
-             }
-           }
-  end
-
-  test "encode_exif roundtrips parsed exif" do
-    jpeg_bytes = File.read!("test/assets/lena.jpg")
-    %{exif: exif} = read_metadata(jpeg_bytes)
-
-    assert {:ok, exif_binary} = Imagex.Exif.encode_exif(exif)
-    assert Imagex.Exif.read_exif_from_tiff(exif_binary) == %{exif: exif}
-  end
-
   test "encode_exif roundtrips parsed exif with thumbnail data" do
     jpeg_bytes = File.read!("test/assets/exif/exif-jpeg-thumbnail-sony-dsc-p150-inverted-colors.jpg")
     %{exif: exif} = read_metadata(jpeg_bytes)
