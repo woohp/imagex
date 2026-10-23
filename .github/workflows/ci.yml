@@ -11,6 +11,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container: elixir:latest
+    defaults:
+      run:
+        # Container jobs otherwise default to sh; the fingerprint step uses pipefail.
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -20,14 +24,73 @@ jobs:
           apt-get update
           apt-get install --yes --no-install-recommends \
             build-essential \
+            cmake \
             git \
+            ninja-build \
+            pkg-config \
+            libbrotli-dev \
+            libhwy-dev \
+            liblcms2-dev \
             libwebp-dev \
             libjpeg-dev \
-            libjxl-dev \
             libpng-dev \
             libpoppler-cpp-dev \
             libtiff-dev
           rm -rf /var/lib/apt/lists/*
+
+      - name: Identify libjxl build environment
+        id: libjxl-environment
+        run: |
+          set -o pipefail
+          # Do not reuse binaries across distro, compiler, or dependency upgrades.
+          fingerprint=$( {
+            cat /etc/os-release
+            g++ --version
+            dpkg-query -W libbrotli-dev libhwy-dev liblcms2-dev
+          } | sha256sum | cut -d ' ' -f 1)
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/libjxl-install/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CPATH=$RUNNER_TEMP/libjxl-install/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$RUNNER_TEMP/libjxl-install/lib" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/libjxl-install/lib" >> "$GITHUB_ENV"
+
+      - name: Cache installed libjxl
+        id: libjxl-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/libjxl-install
+          # Workflow edits invalidate the cache, including release pin/build flag changes.
+          key: libjxl-0.12.0-${{ runner.arch }}-${{ steps.libjxl-environment.outputs.fingerprint }}-${{ hashFiles('.github/workflows/ci.yml') }}
+
+      - if: steps.libjxl-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: libjxl/libjxl
+          # Exact v0.12.0 release, rather than Debian's older package or a snapshot.
+          ref: a7a9c787341cf703dede03c2009fa460cae5e5df
+          path: deps/libjxl
+
+      - name: Build and install libjxl 0.12.0
+        if: steps.libjxl-cache.outputs.cache-hit != 'true'
+        run: |
+          # Build only the shared libraries against system dependencies.
+          # LCMS avoids downloading skcms solely for this CI build.
+          cmake -S deps/libjxl -B "$RUNNER_TEMP/libjxl-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/libjxl-install" -DCMAKE_INSTALL_LIBDIR=lib \
+            -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+            -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
+            -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_JNI=OFF \
+            -DJPEGXL_ENABLE_DOXYGEN=OFF -DJPEGXL_ENABLE_MANPAGES=OFF \
+            -DJPEGXL_ENABLE_SJPEG=OFF -DJPEGXL_ENABLE_SKCMS=OFF
+          cmake --build "$RUNNER_TEMP/libjxl-build" --parallel 2
+          cmake --install "$RUNNER_TEMP/libjxl-build"
+
+      - name: Verify libjxl version
+        run: |
+          # Check restored caches as well as fresh installations.
+          test "$(pkg-config --modversion libjxl)" = "0.12.0"
+          test "$(pkg-config --modversion libjxl_threads)" = "0.12.0"
 
       - name: Install Mix dependencies
         run: |
