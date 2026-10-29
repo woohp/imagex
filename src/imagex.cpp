@@ -1,4 +1,4 @@
-#include "expp.hpp"
+#include "expp/expp.hpp"
 #include <bit>
 #include <climits>
 #include <cmath>
@@ -1215,9 +1215,6 @@ expected<binary, string_view> webp_compress(
 
 int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 {
-    pdf_resource_t::init(caller_env, "poppler");
-    tiff_resource_t::init(caller_env, "tiff");
-    yielding_resource_t::init(caller_env, "yielding_generator");
     TIFFSetWarningHandler(nullptr);
 
     return 0;
@@ -1227,7 +1224,6 @@ int load(ErlNifEnv* caller_env, void** priv_data, ERL_NIF_TERM load_info)
 MODULE(
     Elixir.Imagex.C,
     load,
-    nullptr,
     nullptr,
     def(jpeg_decompress, DirtyFlags::DirtyCpu),
     def(jpeg_compress, DirtyFlags::DirtyCpu),

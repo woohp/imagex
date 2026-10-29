@@ -22,7 +22,7 @@ all: imagex
 imagex:
 	$(MIX) compile
 
-priv/imagex.so: priv src/imagex.cpp
+priv/imagex.so: priv src/imagex.cpp $(wildcard $(EXPP_INCLUDE_DIR)/expp/*.hpp)
 	$(CXX) $(CFLAGS) -shared $(LDFLAGS) -o $@ src/imagex.cpp -lwebp -ljpeg -lpng -ljxl -ljxl_threads -lpoppler-cpp -ltiff -ltiffxx
 
 priv:
